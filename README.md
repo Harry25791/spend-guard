@@ -1,5 +1,8 @@
 
+[![Project Status](https://img.shields.io/badge/status-active-success.svg)](./TODO.md)
 ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
+![Built with Next.js](https://img.shields.io/badge/Built%20with-Next.js-000000?logo=nextdotjs&logoColor=white)
+![Styled with Tailwind](https://img.shields.io/badge/Styled%20with-TailwindCSS-06B6D4?logo=tailwindcss&logoColor=white)
 
 ---
 
