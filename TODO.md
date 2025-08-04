@@ -1,7 +1,7 @@
 
 ---
 
-# TODO – Spend Guard
+# TODO – SpendGuard
 
 ## Completed
 
@@ -30,7 +30,7 @@
 
 ## Phase 1.25 (developer helpers)
 
-* [ ] Simple Python CLI tool to log usage → sends to Spend Guard
+* [ ] Simple Python CLI tool to log usage → sends to SpendGuard
 * [ ] Node.js snippet for logging usage
 * [ ] API endpoint for posting usage entries
 

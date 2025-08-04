@@ -3,13 +3,13 @@
 
 ---
 
-# Spend Guard
+# SpendGuard
 
 Track and manage your LLM/API usage costs across projects — lightweight, fast, and developer‑friendly.
 
 ## About
 
-Spend Guard is a small shovel project designed for AI developers who want to avoid surprise bills. It provides a simple dashboard to:
+SpendGuard is a small shovel project designed for AI developers who want to avoid surprise bills. It provides a simple dashboard to:
 
 * Add projects and providers (OpenAI, Claude, etc.)
 * Paste in usage logs or connect API keys
