@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, useSearchParams } from "next/navigation";
+import Link from "next/link";
 
 interface UsageEntry {
   id: number;
@@ -21,35 +22,39 @@ export default function ProjectDetail() {
   const [date, setDate] = useState("");
   const [tokens, setTokens] = useState("");
   const [cost, setCost] = useState("");
+  const [saved, setSaved] = useState(false);
+  const dateRef = useRef<HTMLInputElement>(null);
 
-  // Load entries from localStorage
+  useEffect(() => {
+    dateRef.current?.focus();
+  }, []);
+
   useEffect(() => {
     if (!projectId) return;
     const stored = localStorage.getItem(`entries-${projectId}`);
-    if (stored) {
-      setEntries(JSON.parse(stored));
-    }
+    if (stored) setEntries(JSON.parse(stored));
   }, [projectId]);
 
-  // Save entries whenever they change
   useEffect(() => {
     if (!projectId) return;
     localStorage.setItem(`entries-${projectId}`, JSON.stringify(entries));
+    const projectsRaw = localStorage.getItem("projects");
+    if (projectsRaw) {
+      const projects = JSON.parse(projectsRaw);
+      localStorage.setItem("projects", JSON.stringify(projects));
+    }
   }, [entries, projectId]);
 
   const addEntry = (e: React.FormEvent) => {
     e.preventDefault();
     if (!date || !tokens || !cost) return;
-    setEntries([
-      ...entries,
-      { id: Date.now(), date, tokens: Number(tokens), cost: Number(cost) },
-    ]);
+    setEntries([...entries, { id: Date.now(), date, tokens: Number(tokens), cost: Number(cost) }]);
     setDate("");
     setTokens("");
     setCost("");
+    dateRef.current?.focus();
+    flashSaved();
   };
-
-  const totalCost = entries.reduce((sum, e) => sum + e.cost, 0);
 
   const deleteEntry = (id: number) => {
     setEntries(entries.filter((e) => e.id !== id));
@@ -61,16 +66,39 @@ export default function ProjectDetail() {
     }
   };
 
+  const totalCost = entries.reduce((sum, e) => sum + e.cost, 0);
 
+  const flashSaved = () => {
+    setSaved(true);
+    setTimeout(() => setSaved(false), 1500);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Escape") {
+      setDate("");
+      setTokens("");
+      setCost("");
+      dateRef.current?.focus();
+    }
+  };
 
   return (
-    <main className="flex min-h-screen flex-col items-center p-8 bg-gray-50">
+    <main
+      className="flex min-h-screen flex-col items-center p-8 bg-gray-50"
+      onKeyDown={handleKeyDown}
+    >
+      <div className="w-full flex justify-between items-center mb-4">
+        <Link href="/" className="text-blue-600 underline">
+          ← Back to Projects
+        </Link>
+      </div>
+
       <h1 className="text-2xl font-bold">{name}</h1>
       <p className="text-gray-600 mb-6">{provider} – Usage Tracker</p>
 
-      {/* Add Usage Form */}
       <form onSubmit={addEntry} className="flex gap-2 mb-6">
         <input
+          ref={dateRef}
           type="date"
           value={date}
           onChange={(e) => setDate(e.target.value)}
@@ -91,15 +119,13 @@ export default function ProjectDetail() {
           onChange={(e) => setCost(e.target.value)}
           className="border rounded px-3 py-2"
         />
-        <button
-          type="submit"
-          className="bg-blue-600 text-white px-4 py-2 rounded"
-        >
+        <button type="submit" className="bg-blue-600 text-white px-4 py-2 rounded">
           Add
         </button>
       </form>
 
-      {/* Usage Table */}
+      {saved && <p className="text-green-600 mb-4">✅ Saved</p>}
+
       <table className="border-collapse w-full max-w-lg bg-white shadow rounded">
         <thead>
           <tr className="bg-gray-100">
@@ -112,7 +138,7 @@ export default function ProjectDetail() {
         <tbody>
           {entries.length === 0 ? (
             <tr>
-              <td colSpan={3} className="text-center py-4 text-gray-500">
+              <td colSpan={4} className="text-center py-4 text-gray-500">
                 No usage entries yet
               </td>
             </tr>
@@ -123,12 +149,12 @@ export default function ProjectDetail() {
                 <td className="border px-4 py-2">{e.tokens}</td>
                 <td className="border px-4 py-2">${e.cost.toFixed(2)}</td>
                 <td className="border px-4 py-2 text-center">
-                    <button
-                        onClick={() => deleteEntry(e.id)}
-                        className="bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600"
-                    >
-                        Delete
-                    </button>
+                  <button
+                    onClick={() => deleteEntry(e.id)}
+                    className="bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600"
+                  >
+                    Delete
+                  </button>
                 </td>
               </tr>
             ))
@@ -136,18 +162,15 @@ export default function ProjectDetail() {
         </tbody>
       </table>
 
-      {/* Clear All Entries */}
       {entries.length > 0 && (
-      <button
+        <button
           onClick={clearAllEntries}
           className="mt-4 bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700"
-      >
+        >
           Clear All Entries
-      </button>
+        </button>
       )}
 
-
-      {/* Total */}
       <p className="mt-4 text-lg font-semibold">
         Total Cost: ${totalCost.toFixed(2)}
       </p>
