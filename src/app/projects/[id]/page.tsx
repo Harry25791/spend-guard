@@ -23,24 +23,42 @@ export default function ProjectDetail() {
     const raw = localStorage.getItem(`entries-${projectId}`);
     return raw ? JSON.parse(raw) : [];
   });
+
   const [date, setDate] = useState("");
   const [tokens, setTokens] = useState("");
   const [cost, setCost] = useState("");
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editDate, setEditDate] = useState("");
+  const [editTokens, setEditTokens] = useState("");
+  const [editCost, setEditCost] = useState("");
   const [saved, setSaved] = useState(false);
-  const dateRef = useRef<HTMLInputElement>(null);
 
+  const [hydrated, setHydrated] = useState(false);
+  useEffect(() => setHydrated(true), []);
+
+  // ✅ Fetch project rate for auto-calculation
+  const [projectRate, setProjectRate] = useState<number | undefined>(undefined);
+  useEffect(() => {
+    const raw = localStorage.getItem("projects");
+    if (!raw || !projectId) return;
+    const list = JSON.parse(raw) as { id: number; rateUsdPer1k?: number }[];
+    const p = list.find((x) => String(x.id) === String(projectId));
+    setProjectRate(p?.rateUsdPer1k);
+  }, [projectId]);
+
+  const dateRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     dateRef.current?.focus();
   }, []);
 
-  // Load on ID change (safety)
+  // Reload entries if project changes
   useEffect(() => {
     if (!projectId) return;
     const stored = localStorage.getItem(`entries-${projectId}`);
     if (stored) setEntries(JSON.parse(stored));
   }, [projectId]);
 
-  // Persist entries and “touch” projects so Home recomputes totals
+  // Persist entries + touch projects so totals update on Home
   useEffect(() => {
     if (!projectId) return;
     localStorage.setItem(`entries-${projectId}`, JSON.stringify(entries));
@@ -48,10 +66,17 @@ export default function ProjectDetail() {
     if (projectsRaw) localStorage.setItem("projects", projectsRaw);
   }, [entries, projectId]);
 
+  // Add entry with optional auto-cost
   const addEntry = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!date || !tokens || !cost) return;
-    setEntries([...entries, { id: Date.now(), date, tokens: Number(tokens), cost: Number(cost) }]);
+    if (!date || !tokens) return;
+    const tokensNum = Number(tokens);
+    const costNum = cost
+      ? Number(cost)
+      : projectRate
+      ? (tokensNum / 1000) * projectRate
+      : 0;
+    setEntries([...entries, { id: Date.now(), date, tokens: tokensNum, cost: costNum }]);
     setDate("");
     setTokens("");
     setCost("");
@@ -60,8 +85,37 @@ export default function ProjectDetail() {
     setTimeout(() => setSaved(false), 1200);
   };
 
+  // Edit entry
+  const startEdit = (e: UsageEntry) => {
+    setEditingId(e.id);
+    setEditDate(e.date);
+    setEditTokens(String(e.tokens));
+    setEditCost(String(e.cost));
+  };
+
+  const saveEdit = () => {
+    if (editingId === null) return;
+    setEntries(entries.map((e) => {
+      if (e.id === editingId) {
+        const tokensNum = Number(editTokens);
+        const costNum = editCost
+          ? Number(editCost)
+          : projectRate
+            ? (tokensNum / 1000) * projectRate
+            : 0;
+        return { ...e, date: editDate, tokens: tokensNum, cost: costNum };
+      }
+      return e;
+    }));
+    setEditingId(null);
+  };
+
+  const cancelEdit = () => setEditingId(null);
+
+  // Delete entry
   const deleteEntry = (id: number) => setEntries(entries.filter((e) => e.id !== id));
 
+  // Clear all entries
   const clearAllEntries = () => {
     if (window.confirm("Are you sure you want to clear all entries?")) setEntries([]);
   };
@@ -79,6 +133,11 @@ export default function ProjectDetail() {
 
         <h1 className="text-2xl font-semibold tracking-tight">{name}</h1>
         <p className="text-slate-400 mb-6">{provider} — Usage Tracker</p>
+        {projectRate !== undefined && (
+          <p className="text-slate-400 mb-2">
+            Rate in use: <span className="text-cyan-300">${projectRate.toFixed(4)}</span> per 1k tokens
+          </p>
+        )}
 
         {/* Add Entry Card */}
         <div className="mb-6 rounded-2xl border border-white/10 bg-white/5 backdrop-blur-sm shadow-lg shadow-cyan-900/20 p-4">
@@ -88,22 +147,22 @@ export default function ProjectDetail() {
               type="date"
               value={date}
               onChange={(e) => setDate(e.target.value)}
-              className="flex-1 rounded-lg bg-white/10 border border-white/10 px-3 py-2 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-500/60"
+              className="flex-1 rounded-lg bg-white/10 border border-white/10 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-cyan-500/60"
             />
             <input
               type="number"
               placeholder="Tokens"
               value={tokens}
               onChange={(e) => setTokens(e.target.value)}
-              className="flex-1 rounded-lg bg-white/10 border border-white/10 px-3 py-2 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-500/60"
+              className="flex-1 rounded-lg bg-white/10 border border-white/10 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-cyan-500/60"
             />
             <input
               type="number"
               step="0.01"
-              placeholder="Cost ($)"
+              placeholder={`Cost ($) ${projectRate ? "(auto if blank)" : ""}`}
               value={cost}
               onChange={(e) => setCost(e.target.value)}
-              className="flex-1 rounded-lg bg-white/10 border border-white/10 px-3 py-2 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-500/60"
+              className="flex-1 rounded-lg bg-white/10 border border-white/10 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-cyan-500/60"
             />
             <button
               type="submit"
@@ -115,7 +174,7 @@ export default function ProjectDetail() {
           {saved && <p className="text-emerald-400 text-sm mt-2">✅ Saved</p>}
         </div>
 
-        {/* Table Card */}
+        {/* Table */}
         <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-sm shadow-lg shadow-cyan-900/20 overflow-hidden">
           <table className="w-full">
             <thead className="bg-white/5">
@@ -127,7 +186,13 @@ export default function ProjectDetail() {
               </tr>
             </thead>
             <tbody>
-              {entries.length === 0 ? (
+              {!hydrated ? (
+                <tr>
+                  <td colSpan={4} className="px-5 py-8 text-center text-slate-400">
+                    Loading…
+                  </td>
+                </tr>
+              ) : entries.length === 0 ? (
                 <tr>
                   <td colSpan={4} className="px-5 py-8 text-center text-slate-400">
                     No usage entries yet
@@ -139,17 +204,49 @@ export default function ProjectDetail() {
                     key={e.id}
                     className={`border-t border-white/10 ${i % 2 === 0 ? "bg-white/[0.02]" : ""} hover:bg-white/[0.06] transition`}
                   >
-                    <td className="px-5 py-3">{e.date}</td>
-                    <td className="px-5 py-3">{e.tokens}</td>
-                    <td className="px-5 py-3">${e.cost.toFixed(2)}</td>
-                    <td className="px-5 py-3 text-center">
-                      <button
-                        onClick={() => deleteEntry(e.id)}
-                        className="rounded-md px-3 py-1.5 bg-rose-500 hover:bg-rose-400 active:bg-rose-600 transition"
-                      >
-                        Delete
-                      </button>
-                    </td>
+                    {editingId === e.id ? (
+                      <>
+                        <td className="px-5 py-3">
+                          <input
+                            type="date"
+                            value={editDate}
+                            onChange={(ev) => setEditDate(ev.target.value)}
+                            className="w-full rounded bg-white/10 border border-white/10 px-2 py-1"
+                          />
+                        </td>
+                        <td className="px-5 py-3">
+                          <input
+                            type="number"
+                            value={editTokens}
+                            onChange={(ev) => { setEditTokens(ev.target.value); setEditCost(""); }}
+                            className="w-full rounded bg-white/10 border border-white/10 px-2 py-1"
+                          />
+                        </td>
+                        <td className="px-5 py-3">
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={editCost}
+                            onChange={(ev) => setEditCost(ev.target.value)}
+                            className="w-full rounded bg-white/10 border border-white/10 px-2 py-1"
+                          />
+                        </td>
+                        <td className="px-5 py-3 text-center space-x-2">
+                          <button onClick={saveEdit} className="rounded-md px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500">Save</button>
+                          <button onClick={cancelEdit} className="rounded-md px-3 py-1.5 bg-slate-600 hover:bg-slate-500">Cancel</button>
+                        </td>
+                      </>
+                    ) : (
+                      <>
+                        <td className="px-5 py-3">{e.date}</td>
+                        <td className="px-5 py-3">{e.tokens}</td>
+                        <td className="px-5 py-3">${e.cost.toFixed(2)}</td>
+                        <td className="px-5 py-3 text-center space-x-2">
+                          <button onClick={() => startEdit(e)} className="rounded-md px-3 py-1.5 bg-cyan-600 hover:bg-cyan-500">Edit</button>
+                          <button onClick={() => deleteEntry(e.id)} className="rounded-md px-3 py-1.5 bg-rose-500 hover:bg-rose-400">Delete</button>
+                        </td>
+                      </>
+                    )}
                   </tr>
                 ))
               )}
@@ -161,7 +258,7 @@ export default function ProjectDetail() {
           <div className="flex justify-end pt-4">
             <button
               onClick={clearAllEntries}
-              className="rounded-lg px-4 py-2 bg-rose-600 hover:bg-rose-500 active:bg-rose-700 transition shadow shadow-rose-900/30"
+              className="rounded-lg px-4 py-2 bg-rose-600 hover:bg-rose-500 transition"
             >
               Clear All Entries
             </button>
