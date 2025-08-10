@@ -5,19 +5,21 @@ import { useParams, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { loadEntries, saveEntries, type EntryV2 } from "@/lib/storage";
 import { PROVIDER_MODELS, normalizeProvider, getModelRate, type ProviderKey } from "@/lib/rates";
+import { estimateTokens } from "@/lib/token";
 
 type UsageEntry = EntryV2;
 
 export default function ProjectDetail() {
+  // ── Routing / Query
   const params = useParams<{ id: string }>();
   const projectId = params.id;
   const searchParams = useSearchParams();
   const name = searchParams.get("name") ?? "Unnamed Project";
   const provider = searchParams.get("provider") ?? "Unknown Provider";
 
+  // ── Data
   const [entries, setEntries] = useState<UsageEntry[]>(() => {
     if (typeof window === "undefined" || !projectId) return [];
-    // Fill provider from project (via query) for legacy rows
     const projectProvider =
       (typeof window !== "undefined"
         ? new URLSearchParams(window.location.search).get("provider")
@@ -25,21 +27,47 @@ export default function ProjectDetail() {
     return loadEntries(projectId, projectProvider ?? undefined);
   });
 
+  // ── Add form state
   const [date, setDate] = useState("");
-
-  // Add-form: provider/model
   const [selectedProvider, setSelectedProvider] = useState<string>("");
+  const [selectedModel, setSelectedModel] = useState<string>("");
+
+  // Fallbacks: from URL and from existing entries
+  const queryProviderKey: ProviderKey | null = normalizeProvider(provider || "");
+  const [lastProviderKey, setLastProviderKey] = useState<ProviderKey | null>(null);
+
   useEffect(() => {
-    // If a valid provider key came via query, set it; ignore values like "Claude"
+    // derive last used provider from entries (newest-first or first non-empty)
+    let found: ProviderKey | null = null;
+    for (const e of entries) {
+      if (e?.provider) {
+        const k = normalizeProvider(e.provider);
+        if (k) { found = k; break; }
+      }
+    }
+    setLastProviderKey(found);
+  }, [entries]);
+
+  // If no explicit selection yet, adopt last-used or query provider
+  useEffect(() => {
+    if (!selectedProvider) {
+      if (lastProviderKey) setSelectedProvider(lastProviderKey);
+      else if (queryProviderKey) setSelectedProvider(queryProviderKey);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lastProviderKey, queryProviderKey]);
+
+  const [tokens, setTokens] = useState<number>(0);
+  // Entry mode: false = Text Counter (default), true = Manual Tokens
+  const [manualTokens, setManualTokens] = useState(false);
+
+  // If a valid provider key came via query, set it (ignore values like "Claude")
+  useEffect(() => {
     const key = normalizeProvider(provider || "");
     if (key) setSelectedProvider(key);
   }, [provider]);
-  const [selectedModel, setSelectedModel] = useState<string>("");
 
-  // Tokens for add form
-  const [tokens, setTokens] = useState<number>(0);
-
-  // Fetch project rate for auto-calculation (must come before any use)
+  // ── Project default rate (declare before any derived usage)
   const [projectRate, setProjectRate] = useState<number | undefined>(undefined);
   useEffect(() => {
     const raw = localStorage.getItem("projects");
@@ -53,17 +81,26 @@ export default function ProjectDetail() {
     }
   }, [projectId]);
 
-  // Derived for add form
-  const providerKey: ProviderKey | null = normalizeProvider(selectedProvider);
-  const modelOptions = providerKey ? PROVIDER_MODELS[providerKey] : [];
-  const [customRate, setCustomRate] = useState<number | undefined>(undefined);
-  const effectiveRate = customRate ?? getModelRate(selectedProvider, selectedModel, projectRate);
-  const computedCost = (() => {
-    if (!effectiveRate || !tokens || tokens <= 0) return 0;
-    return (tokens / 1000) * effectiveRate;
-  })();
+  // Active provider key prefers explicit selection, then last-used, then query
+  const activeProviderKey: ProviderKey | null =
+    normalizeProvider(selectedProvider) || lastProviderKey || queryProviderKey;
 
-  // Edit modal state (pop-out)
+  const modelOptions = activeProviderKey ? PROVIDER_MODELS[activeProviderKey] : [];
+  const [customRate, setCustomRate] = useState<number | undefined>(undefined);
+  const effectiveRate = customRate ?? getModelRate(
+    (selectedProvider || activeProviderKey || "") as string,
+    selectedModel,
+    projectRate
+  );
+
+  // Token Counter (paste text -> tokens/cost)
+  const [counterText, setCounterText] = useState("");
+  const counterTokens = estimateTokens(counterText, selectedModel || undefined);
+  const counterCost = effectiveRate ? (counterTokens / 1000) * effectiveRate : 0;
+
+  const computedCost = (!effectiveRate || !tokens || tokens <= 0) ? 0 : (tokens / 1000) * effectiveRate;
+
+  // ── Edit modal state
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [draftDate, setDraftDate] = useState("");
@@ -72,12 +109,20 @@ export default function ProjectDetail() {
   const [draftTokens, setDraftTokens] = useState<number>(0);
   const [draftCustomRate, setDraftCustomRate] = useState<number | undefined>(undefined);
 
-  // Draft-derived (must be after projectRate)
-  const draftProviderKey: ProviderKey | null = normalizeProvider(draftProvider || "");
-  const draftModelOptions = draftProviderKey ? PROVIDER_MODELS[draftProviderKey] : [];
-  const draftEffectiveRate =
-    draftCustomRate ?? getModelRate(draftProvider, draftModel, projectRate);
+  // Draft-derived with fallback to selected/last-used/query (must be after projectRate)
+  const draftFallbackProvider =
+    draftProvider ||
+    selectedProvider ||
+    (lastProviderKey || "") ||
+    (queryProviderKey || "") ||
+    "";
 
+  const activeDraftProviderKey: ProviderKey | null = normalizeProvider(draftFallbackProvider);
+  const draftModelOptions = activeDraftProviderKey ? PROVIDER_MODELS[activeDraftProviderKey] : [];
+  const draftEffectiveRate =
+    draftCustomRate ?? getModelRate(draftFallbackProvider, draftModel, projectRate);
+
+  // ── Misc
   const [saved, setSaved] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   useEffect(() => setHydrated(true), []);
@@ -96,13 +141,12 @@ export default function ProjectDetail() {
     dateRef.current?.focus();
   }, []);
 
-  // Reload entries if project changes
+  // ── Load / Save
   useEffect(() => {
     if (!projectId) return;
     setEntries(loadEntries(projectId));
   }, [projectId]);
 
-  // Persist entries + touch projects so Home totals recalc
   useEffect(() => {
     if (!projectId) return;
     saveEntries(projectId, entries);
@@ -110,7 +154,7 @@ export default function ProjectDetail() {
     if (projectsRaw) localStorage.setItem("projects", projectsRaw);
   }, [entries, projectId]);
 
-  // Add entry
+  // ── Handlers
   const addEntry = (e: React.FormEvent) => {
     e.preventDefault();
     if (!date || !tokens || tokens <= 0) return;
@@ -120,14 +164,14 @@ export default function ProjectDetail() {
       date,
       tokens,
       cost: Number((computedCost || 0).toFixed(6)),
-      provider: selectedProvider || provider, // per-entry
-      model: selectedModel || undefined,      // per-entry
-      rateUsdPer1k: effectiveRate,            // snapshot
+      provider: selectedProvider || provider,
+      model: selectedModel || undefined,
+      rateUsdPer1k: effectiveRate,
     };
 
     setEntries((prev) => [newEntry, ...prev]);
 
-    // reset: keep provider, reset model; date -> today
+    // reset minimal: keep provider; reset model; date -> today
     setTokens(0);
     setSelectedModel("");
     const t = new Date();
@@ -141,16 +185,36 @@ export default function ProjectDetail() {
     setTimeout(() => setSaved(false), 1200);
   };
 
-  // Edit entry (open modal prefilled)
+  // Add entry directly from the counter
+  const addEntryFromCounter = () => {
+    if (!date || counterTokens <= 0 || !effectiveRate) return;
+    const newEntry: UsageEntry = {
+      id: crypto.randomUUID(),
+      date,
+      tokens: counterTokens,
+      cost: Number((counterCost || 0).toFixed(6)),
+      provider: selectedProvider || provider,
+      model: selectedModel || undefined,
+      rateUsdPer1k: effectiveRate,
+    };
+    setEntries(prev => [newEntry, ...prev]);
+    setCounterText(""); // keep date/provider/model
+    setSaved(true);
+    setTimeout(() => setSaved(false), 1200);
+  };
+
   const startEdit = (row: UsageEntry) => {
     setEditingId(row.id as string);
     setDraftDate(row.date);
-    setDraftProvider(row.provider ?? "");
+
+    // Prefer entry provider; fall back to current selection or query
+    const baseProv = row.provider || selectedProvider || provider || "";
+    setDraftProvider(baseProv);
     setDraftModel(row.model ?? "");
     setDraftTokens(Number(row.tokens) || 0);
 
-    // If the entry's provider/model isn't in our catalog, treat it as custom
-    const catRate = getModelRate(row.provider ?? "", row.model ?? "", projectRate);
+    // If stored rate differs from catalog, treat as custom
+    const catRate = getModelRate(baseProv, row.model ?? "", projectRate);
     if (typeof row.rateUsdPer1k === "number" && row.rateUsdPer1k !== catRate) {
       setDraftCustomRate(row.rateUsdPer1k);
     } else {
@@ -192,13 +256,14 @@ export default function ProjectDetail() {
 
   const deleteEntry = (id: string) => setEntries(entries.filter((e) => e.id !== id));
 
-  // Clear all entries
   const clearAllEntries = () => {
     if (window.confirm("Are you sure you want to clear all entries?")) setEntries([]);
   };
 
+  // ── Totals
   const totalCost = entries.reduce((sum, e) => sum + e.cost, 0);
 
+  // ── Render
   return (
     <main className="min-h-screen w-full bg-gradient-to-br from-[#0b1023] via-[#0e1330] to-[#111827] text-slate-100">
       <div className="mx-auto max-w-5xl px-6 py-6">
@@ -210,26 +275,48 @@ export default function ProjectDetail() {
 
         <h1 className="text-2xl font-semibold tracking-tight">{name}</h1>
         <p className="text-slate-400 mb-6">{provider} — Usage Tracker</p>
-        {projectRate !== undefined && (
-          <p className="text-slate-400 mb-2">
-            Rate in use: <span className="text-cyan-300">${projectRate.toFixed(4)}</span> per 1k tokens
-          </p>
-        )}
+        <p className="text-slate-400 mb-2">
+          {customRate
+            ? <>Custom rate: <span className="text-cyan-300">${customRate.toFixed(4)}</span> per 1k tokens</>
+            : effectiveRate
+              ? <>Rate: <span className="text-cyan-300">${effectiveRate.toFixed(4)}</span> per 1k tokens</>
+              : projectRate !== undefined
+                ? <>Project default: <span className="text-cyan-300">${projectRate.toFixed(4)}</span> per 1k tokens</>
+                : <>Select a provider/model to compute cost</>}
+        </p>
 
         {/* Add Entry Card */}
         <div className="mb-6 rounded-2xl border border-white/10 bg-white/5 backdrop-blur-sm shadow-lg shadow-cyan-900/20 p-4">
+          <div className="mb-3 flex items-center gap-2 text-sm">
+            <span className="text-slate-400">Entry mode:</span>
+            <button
+              type="button"
+              onClick={() => setManualTokens(false)}
+              className={`rounded-md px-2.5 py-1 ${!manualTokens ? "bg-cyan-600 text-white" : "bg-slate-800/60 text-slate-200"} border border-white/10`}
+            >
+              Token Counter
+            </button>
+            <button
+              type="button"
+              onClick={() => setManualTokens(true)}
+              className={`rounded-md px-2.5 py-1 ${manualTokens ? "bg-cyan-600 text-white" : "bg-slate-800/60 text-slate-200"} border border-white/10`}
+            >
+              Manual Tokens
+            </button>
+          </div>
           <form onSubmit={addEntry} className="flex flex-col sm:flex-row gap-3">
             <input
               ref={dateRef}
               type="date"
               value={date}
               onChange={(e) => setDate(e.target.value)}
-              className="flex-1 rounded-lg bg-white/10 border border-white/10 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-cyan-500/60"
+              className="flex-1 rounded-lg bg-slate-800/60 border border-white/10 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-cyan-500/60"
             />
 
+            {/* Provider */}
             <div className="relative flex-1">
               <select
-                value={selectedProvider}
+                value={selectedProvider || (activeProviderKey || "")}
                 onChange={(e) => {
                   const v = e.target.value;
                   if (v === "other") {
@@ -257,16 +344,17 @@ export default function ProjectDetail() {
                 ))}
               </select>
               <svg className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-300"
-                  viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                <path d="M5.23 7.21a.75.75 0 011.06.02L10 11.17l3.71-3.94a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"/>
+                   viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                <path d="M5.23 7.21a.75.75 0 011.06.02L10 11.17l3.71-3.94a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01-1.06z"/>
               </svg>
             </div>
 
+            {/* Model */}
             <div className="relative flex-1">
               <select
                 value={selectedModel}
                 onChange={(e) => setSelectedModel(e.target.value)}
-                disabled={!providerKey && customRate === undefined}
+                disabled={!activeProviderKey && customRate === undefined}
                 className="w-full appearance-none rounded-lg bg-slate-800/60 border border-white/10 text-slate-100 px-3 py-2 pr-8 focus:outline-none focus:ring-2 focus:ring-cyan-500/60 disabled:bg-slate-700/40 disabled:text-slate-400 disabled:cursor-not-allowed"
               >
                 <option value="">Select model</option>
@@ -275,36 +363,75 @@ export default function ProjectDetail() {
                 ))}
               </select>
               <svg className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-300"
-                  viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                   viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
                 <path d="M5.23 7.21a.75.75 0 011.06.02L10 11.17l3.71-3.94a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01-1.06z"/>
               </svg>
             </div>
 
-            <input
-              type="number"
-              placeholder="Tokens"
-              value={tokens ? String(tokens) : ""}
-              onChange={(e) => setTokens(Number(e.target.value))}
-              className="flex-1 rounded-lg bg-white/10 border border-white/10 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-cyan-500/60"
-            />
+            {/* Tokens */}
+            {manualTokens && (
+              <input
+                type="number"
+                placeholder="Token Count"
+                value={tokens ? String(tokens) : ""}
+                onChange={(e) => setTokens(Number(e.target.value))}
+                className="flex-1 rounded-lg bg-slate-800/60 border border-white/10 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-cyan-500/60"
+              />
+            )}
 
-            <p className="text-xs text-slate-400 mt-1">
-              {customRate
-                ? `Custom rate: $${customRate}/1k tokens`
-                : effectiveRate
-                  ? `Rate: $${effectiveRate}/1k tokens`
-                  : "Pick a provider and model to enable tokens → cost"}
-            </p>
-
-            <button
-              type="submit"
-              className="rounded-lg px-4 py-2 bg-cyan-500 hover:bg-cyan-400 active:bg-cyan-600 transition shadow shadow-cyan-900/30"
-            >
-              Add
-            </button>
+            {manualTokens && (
+              <button
+                type="submit"
+                className="rounded-lg px-4 py-2 bg-cyan-500 hover:bg-cyan-400 active:bg-cyan-600 transition shadow shadow-cyan-900/30"
+              >
+                Add
+              </button>
+            )}
           </form>
+
+          <p className="text-xs text-slate-400 mt-2">
+            {customRate
+              ? `Custom rate: $${customRate}/1k tokens`
+              : effectiveRate
+                ? `Rate: $${effectiveRate}/1k tokens`
+                : "Pick a provider and model to enable tokens → cost"}
+          </p>
+
           {saved && <p className="text-emerald-400 text-sm mt-2">✅ Saved</p>}
         </div>
+        {!manualTokens && (
+          <>
+            {/* Token Counter */}
+            <div className="mb-6 rounded-2xl border border-white/10 bg-white/5 backdrop-blur-sm shadow-lg shadow-cyan-900/20 p-4">
+              <div className="mb-2 flex items-center justify-between">
+                <h3 className="text-sm font-medium text-slate-200">Token Counter</h3>
+                <span className="text-xs text-slate-400">
+                  {effectiveRate ? `@ $${effectiveRate}/1k` : projectRate ? `@ project $${projectRate}/1k` : "select provider+model"}
+                </span>
+              </div>
+              <textarea
+                value={counterText}
+                onChange={(e) => setCounterText(e.target.value)}
+                placeholder="Paste prompt or output here to estimate tokens & cost..."
+                className="w-full min-h-[120px] rounded-lg bg-slate-800/60 border border-white/10 px-3 py-2 text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-500/60"
+              />
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+                <div className="text-sm text-slate-300">
+                  Tokens: <span className="font-medium">{counterTokens.toLocaleString()}</span>
+                  <span className="mx-2">•</span>
+                  Est. Cost: <span className="font-semibold text-cyan-300">${counterCost.toFixed(6)}</span>
+                </div>
+                <button
+                  onClick={addEntryFromCounter}
+                  disabled={counterTokens <= 0 || !effectiveRate}
+                  className="rounded-lg px-4 py-2 bg-cyan-500 hover:bg-cyan-400 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                >
+                  Add Entry from Text
+                </button>
+              </div>
+            </div>
+          </>
+        )}
 
         {/* Table */}
         <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-sm shadow-lg shadow-cyan-900/20 overflow-hidden">
@@ -323,15 +450,11 @@ export default function ProjectDetail() {
             <tbody>
               {!hydrated ? (
                 <tr>
-                  <td colSpan={4} className="px-5 py-8 text-center text-slate-400">
-                    Loading…
-                  </td>
+                  <td colSpan={7} className="px-5 py-8 text-center text-slate-400">Loading…</td>
                 </tr>
               ) : entries.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="px-5 py-8 text-center text-slate-400">
-                    No usage entries yet
-                  </td>
+                  <td colSpan={7} className="px-5 py-8 text-center text-slate-400">No usage entries yet</td>
                 </tr>
               ) : (
                 entries.map((e, i) => (
@@ -339,55 +462,28 @@ export default function ProjectDetail() {
                     key={e.id}
                     className={`border-t border-white/10 ${i % 2 === 0 ? "bg-white/[0.02]" : ""} hover:bg-white/[0.06] transition`}
                   >
-                    {editingId === e.id ? (
-                      <>
-                        <td className="px-5 py-3">{e.date}</td>
-                        <td className="px-5 py-3">{e.provider ?? "—"}</td>
-                        <td className="px-5 py-3">{e.model ?? "—"}</td>
-                        <td className="px-5 py-3 text-right">{e.tokens.toLocaleString()}</td>
-                        <td className="px-5 py-3 text-right">
-                          {typeof e.rateUsdPer1k === "number" ? e.rateUsdPer1k : (projectRate ?? "—")}
-                        </td>
-                        <td className="px-5 py-3 text-right">${e.cost.toFixed(6)}</td>
-                        <td className="px-5 py-3 text-center space-x-2">
-                          <button
-                            onClick={() => startEdit(e)}
-                            className="rounded-md px-3 py-1.5 bg-cyan-600 hover:bg-cyan-500"
-                          >
-                            Edit
-                          </button>
-                          <button
-                            onClick={() => deleteEntry(e.id as string)}
-                            className="rounded-md px-3 py-1.5 bg-rose-500 hover:bg-rose-400"
-                          >
-                            Delete
-                          </button>
-                        </td>
-                      </>
-                    ) : (
-                      <>
-                        <td className="px-5 py-3">{e.date}</td>
-                        <td className="px-5 py-3">{e.provider ?? provider ?? "—"}</td>
-                        <td className="px-5 py-3">{e.model ?? "—"}</td>
-                        <td className="px-5 py-3 text-right">{e.tokens.toLocaleString()}</td>
-                        <td className="px-5 py-3 text-right">{typeof e.rateUsdPer1k === "number" ? e.rateUsdPer1k : "—"}</td>
-                        <td className="px-5 py-3 text-right">${e.cost.toFixed(6)}</td>
-                        <td className="px-5 py-3 text-center space-x-2">
-                        <button
-                          onClick={() => startEdit(e)}
-                          className="rounded-md px-3 py-1.5 bg-cyan-600 hover:bg-cyan-500"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          onClick={() => deleteEntry(e.id as string)}
-                          className="rounded-md px-3 py-1.5 bg-rose-500 hover:bg-rose-400"
-                        >
-                          Delete
-                        </button>
-                      </td>
-                      </>
-                    )}
+                    <td className="px-5 py-3">{e.date}</td>
+                    <td className="px-5 py-3">{e.provider ?? "—"}</td>
+                    <td className="px-5 py-3">{e.model ?? "—"}</td>
+                    <td className="px-5 py-3 text-right">{e.tokens.toLocaleString()}</td>
+                    <td className="px-5 py-3 text-right">
+                      {typeof e.rateUsdPer1k === "number" ? e.rateUsdPer1k : (projectRate ?? "—")}
+                    </td>
+                    <td className="px-5 py-3 text-right">${e.cost.toFixed(6)}</td>
+                    <td className="px-5 py-3 text-center space-x-2">
+                      <button
+                        onClick={() => startEdit(e)}
+                        className="rounded-md px-3 py-1.5 bg-cyan-600 hover:bg-cyan-500"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => deleteEntry(e.id as string)}
+                        className="rounded-md px-3 py-1.5 bg-rose-500 hover:bg-rose-400"
+                      >
+                        Delete
+                      </button>
+                    </td>
                   </tr>
                 ))
               )}
@@ -406,9 +502,8 @@ export default function ProjectDetail() {
           </div>
         )}
 
-        <p className="mt-4 text-lg font-semibold">
-          Total Cost: ${totalCost.toFixed(6)}
-        </p>
+        <p className="mt-4 text-lg font-semibold">Total Cost: ${totalCost.toFixed(6)}</p>
+
         {/* Edit Modal */}
         {isEditOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center">
@@ -423,7 +518,7 @@ export default function ProjectDetail() {
                     type="date"
                     value={draftDate}
                     onChange={(e) => setDraftDate(e.target.value)}
-                    className="w-full rounded-lg bg-white/10 border border-white/10 px-3 py-2"
+                    className="w-full rounded-lg bg-slate-800/60 border border-white/10 px-3 py-2"
                   />
                 </div>
 
@@ -433,7 +528,7 @@ export default function ProjectDetail() {
                     type="number"
                     value={draftTokens ? String(draftTokens) : ""}
                     onChange={(e) => setDraftTokens(Number(e.target.value))}
-                    className="w-full rounded-lg bg-white/10 border border-white/10 px-3 py-2"
+                    className="w-full rounded-lg bg-slate-800/60 border border-white/10 px-3 py-2"
                   />
                 </div>
 
@@ -441,7 +536,7 @@ export default function ProjectDetail() {
                   <label className="block text-sm mb-1">Provider</label>
                   <div className="relative">
                     <select
-                      value={draftProvider}
+                      value={draftProvider || (activeDraftProviderKey || "")}
                       onChange={(e) => {
                         const v = e.target.value;
                         if (v === "other") {
@@ -473,7 +568,7 @@ export default function ProjectDetail() {
                       ))}
                     </select>
                     <svg className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-300"
-                        viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                         viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
                       <path d="M5.23 7.21a.75.75 0 011.06.02L10 11.17l3.71-3.94a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01-1.06z"/>
                     </svg>
                   </div>
@@ -485,7 +580,7 @@ export default function ProjectDetail() {
                     <select
                       value={draftModel}
                       onChange={(e) => setDraftModel(e.target.value)}
-                      disabled={!draftProviderKey && draftCustomRate === undefined}
+                      disabled={!activeDraftProviderKey && draftCustomRate === undefined}
                       className="w-full appearance-none rounded-lg bg-slate-800/60 border border-white/10 text-slate-100 px-3 py-2 pr-8 focus:outline-none focus:ring-2 focus:ring-cyan-500/60 disabled:bg-slate-700/40 disabled:text-slate-400 disabled:cursor-not-allowed"
                     >
                       <option value="">Select model</option>
@@ -494,7 +589,7 @@ export default function ProjectDetail() {
                       ))}
                     </select>
                     <svg className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-300"
-                        viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                         viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
                       <path d="M5.23 7.21a.75.75 0 011.06.02L10 11.17l3.71-3.94a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01-1.06z"/>
                     </svg>
                   </div>
