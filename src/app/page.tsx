@@ -2,15 +2,13 @@
 
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
+import { downloadExport, importAll } from "@/lib/io";
+import { PROVIDER_DEFAULTS, normalizeProvider } from "@/lib/rates";
+import type { Project as ProjectType } from "@/lib/storage";
 
-interface Project {
-  id: number;
-  name: string;
-  provider: string;
-  rateUsdPer1k?: number; // ADD: rate field
-}
+type Project = ProjectType;
 
-function getProjectTotals(projectId: number) {
+function getProjectTotals(projectId: string) {
   try {
     const raw = localStorage.getItem(`entries-${projectId}`);
     if (!raw) return { total: 0, lastDate: null as string | null };
@@ -23,48 +21,33 @@ function getProjectTotals(projectId: number) {
   }
 }
 
-// ADD: provider → rate defaults
-const PROVIDER_DEFAULTS: Record<string, number> = {
-  OpenAI: 0.5,
-  Claude: 0.8,
-  "Google Gemini": 0.2,
-};
-
-// Normalize provider names
-function normalizeProvider(p: string) {
-  return p.trim().toLowerCase();
-}
-
-// Case/space-insensitive lookup
+// Case/space-insensitive lookup using shared catalog
 function getDefaultRate(providerInput: string): number | undefined {
-  const key = normalizeProvider(providerInput);
-  const map: Record<string, number> = Object.fromEntries(
-    Object.entries(PROVIDER_DEFAULTS).map(([k, v]) => [k.toLowerCase(), v])
-  );
-  return map[key];
+  const key = normalizeProvider(providerInput); // returns provider key or null
+  if (!key) return undefined;
+  // PROVIDER_DEFAULTS is keyed by normalized provider keys (e.g., "openai")
+  return (PROVIDER_DEFAULTS as Record<string, number>)[key];
 }
-
-// ADD: export type
-type ExportShape = {
-  projects: Project[];
-  entries: Record<string, any[]>;
-};
 
 export default function Home() {
   const [projects, setProjects] = useState<Project[]>(() => {
     if (typeof window === "undefined") return [];
     const stored = localStorage.getItem("projects");
-    return stored ? JSON.parse(stored) : [];
+    const parsed = stored ? JSON.parse(stored) : [];
+    // normalize id to string to match lib/storage types
+    return Array.isArray(parsed)
+      ? parsed.map((p: any) => ({ ...p, id: String(p.id) }))
+      : [];
   });
 
   const [name, setName] = useState("");
-  const [provider, setProvider] = useState("");
-  const [rate, setRate] = useState<string>(""); // ADD: rate state
-  const [totals, setTotals] = useState<Record<number, { total: number; lastDate: string | null }>>({});
+  const [totals, setTotals] = useState<Record<string, { total: number; lastDate: string | null }>>({});
+  const [providerLabels, setProviderLabels] = useState<Record<string, string>>({});
   const [saved, setSaved] = useState(false);
   const nameRef = useRef<HTMLInputElement>(null);
 
   const [hydrated, setHydrated] = useState(false);
+  const hasProjects = hydrated && projects.length > 0;
   useEffect(() => setHydrated(true), []);
 
   useEffect(() => {
@@ -73,16 +56,48 @@ export default function Home() {
 
   useEffect(() => {
     localStorage.setItem("projects", JSON.stringify(projects));
-    const map: Record<number, { total: number; lastDate: string | null }> = {};
-    projects.forEach((p) => (map[p.id] = getProjectTotals(p.id)));
-    setTotals(map);
+
+    const totalsMap: Record<string, { total: number; lastDate: string | null }> = {};
+    const providerMap: Record<string, string> = {};
+
+    for (const p of projects) {
+      totalsMap[p.id] = getProjectTotals(p.id);
+
+      // compute provider label from entries
+      const raw = localStorage.getItem(`entries-${p.id}`);
+      if (!raw) {
+        providerMap[p.id] = "—";
+        continue;
+      }
+      try {
+        const entries: { provider?: string }[] = JSON.parse(raw);
+        const set = new Set(
+          entries
+            .map(e => (e.provider || "").trim())
+            .filter(v => v.length > 0)
+            .map(v => v.toLowerCase())
+        );
+        providerMap[p.id] =
+          set.size === 0 ? "—" :
+          set.size === 1 ? Array.from(set)[0] :
+          "Multiple Providers";
+      } catch {
+        providerMap[p.id] = "—";
+      }
+    }
+
+    setTotals(totalsMap);
+    setProviderLabels(providerMap);
   }, [projects]);
 
   useEffect(() => {
     const resync = () => {
       const stored = localStorage.getItem("projects");
       const parsed = stored ? JSON.parse(stored) : [];
-      if (JSON.stringify(parsed) !== JSON.stringify(projects)) setProjects(parsed);
+      const normalized = Array.isArray(parsed)
+        ? parsed.map((p: any) => ({ ...p, id: String(p.id) }))
+        : [];
+      if (JSON.stringify(normalized) !== JSON.stringify(projects)) setProjects(normalized);
     };
     window.addEventListener("visibilitychange", resync);
     window.addEventListener("focus", resync);
@@ -92,80 +107,53 @@ export default function Home() {
     };
   }, [projects]);
 
-  // ADD: export handler
+  // ADD: export handler (uses versioned exporter)
   const exportData = () => {
-    const entries: Record<string, any[]> = {};
-    Object.keys(localStorage).forEach((k) => {
-      if (k.startsWith("entries-")) {
-        const v = localStorage.getItem(k);
-        entries[k] = v ? JSON.parse(v) : [];
-      }
-    });
-    const payload: ExportShape = { projects, entries };
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `spend-guard-backup-${Date.now()}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadExport(); // creates a v2 export and downloads it
   };
 
-  // ADD: import handler
-  const importData = (ev: React.ChangeEvent<HTMLInputElement>) => {
+  // ADD: import handler (accepts v1 or v2; auto‑upgrades v1)
+  const importData = async (ev: React.ChangeEvent<HTMLInputElement>) => {
     const file = ev.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      try {
-        const parsed = JSON.parse(String(reader.result)) as ExportShape;
-        localStorage.setItem("projects", JSON.stringify(parsed.projects ?? []));
-        Object.keys(parsed.entries ?? {}).forEach((k) => {
-          localStorage.setItem(k, JSON.stringify(parsed.entries[k]));
-        });
-        setProjects(parsed.projects ?? []);
-        alert("Import complete ✅");
-      } catch {
-        alert("Import failed ❌ Invalid file.");
-      }
-    };
-    reader.readAsText(file);
-    ev.target.value = "";
+    try {
+      const text = await file.text();
+      const res = importAll(text, "merge"); // or "replace" to overwrite
+      alert(
+        `Import complete.\nProjects: ${res.projects}\nEntries: ${res.entries}${
+          res.warnings.length ? `\nWarnings:\n- ${res.warnings.join("\n- ")}` : ""
+        }`
+      );
+      location.reload(); // refresh list/totals
+    } catch (err: any) {
+      alert(`Import failed: ${err?.message || String(err)}`);
+    } finally {
+      ev.target.value = "";
+    }
   };
 
   const addProject = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim() || !provider.trim()) return;
-
-    const fallback = getDefaultRate(provider); // case/space‑insensitive
-    let chosen = rate ? Number(rate) : fallback;
-
-    // Clamp obviously-wrong values (e.g., 1000)
-    if (chosen !== undefined) {
-      if (Number.isNaN(chosen) || chosen < 0) chosen = 0;
-      if (chosen > 10) chosen = 10; // providers are typically << $10 / 1k tokens
-    } // ✅ this closing brace was missing
+    if (!name.trim()) return;
 
     setProjects([
       ...projects,
       {
-        id: Date.now(),
+        id: crypto.randomUUID(),
         name: name.trim(),
-        provider: provider.trim(),
-        rateUsdPer1k: chosen, // may be undefined; that’s fine
+        provider: "",
+        rateUsdPer1k: undefined, // may be undefined; that’s fine
       },
     ]);
 
     setName("");
-    setProvider("");
-    setRate("");
     nameRef.current?.focus();
     setSaved(true);
     setTimeout(() => setSaved(false), 1200);
   };
 
 
-  const deleteProject = (id: number) => {
+  const deleteProject = (id: string) => {
     setProjects(projects.filter((p) => p.id !== id));
     localStorage.removeItem(`entries-${id}`);
   };
@@ -201,22 +189,6 @@ export default function Home() {
               placeholder="Project name"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="flex-1 rounded-lg bg-white/10 border border-white/10 px-3 py-2 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-500/60"
-            />
-            <input
-              type="text"
-              placeholder="Provider (OpenAI, Claude, etc.)"
-              value={provider}
-              onChange={(e) => setProvider(e.target.value)}
-              className="flex-1 rounded-lg bg-white/10 border border-white/10 px-3 py-2 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-500/60"
-            />
-            {/* ADD: Rate input */}
-            <input
-              type="number"
-              step="0.01"
-              placeholder="Rate $/1k tokens (optional)"
-              value={rate}
-              onChange={(e) => setRate(e.target.value)}
               className="flex-1 rounded-lg bg-white/10 border border-white/10 px-3 py-2 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-500/60"
             />
             <button
@@ -261,7 +233,7 @@ export default function Home() {
                   >
                     <td className="px-5 py-3">
                       <Link
-                        href={`/projects/${p.id}?name=${encodeURIComponent(p.name)}&provider=${encodeURIComponent(p.provider)}`}
+                        href={`/projects/${p.id}?name=${encodeURIComponent(p.name)}`}
                         className="text-cyan-300 hover:text-cyan-200 underline decoration-cyan-500/40"
                       >
                         {p.name}
@@ -270,7 +242,9 @@ export default function Home() {
                         <div className="text-xs text-slate-400 mt-1">Last: {totals[p.id].lastDate}</div>
                       )}
                     </td>
-                    <td className="px-5 py-3 text-slate-200">{p.provider}</td>
+                    <td className="px-5 py-3 text-slate-200">
+                      {hydrated ? providerLabels[p.id] ?? "—" : "—"}
+                    </td>
                     <td className="px-5 py-3 text-right font-medium">
                       ${(totals[p.id]?.total ?? 0).toFixed(2)}
                     </td>
@@ -305,7 +279,7 @@ export default function Home() {
             </label>
           </div>
 
-          {projects.length > 0 && (
+          {hasProjects && (
             <button
               onClick={clearAllProjects}
               className="rounded-lg px-4 py-2 bg-rose-600 hover:bg-rose-500 transition"
