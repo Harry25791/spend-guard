@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { loadEntries, saveEntries, type EntryV2, type Project } from "@/lib/storage";
+import { loadEntries, saveEntries, type EntryV2 } from "@/lib/storage";
 import { PROVIDER_MODELS, normalizeProvider, getModelRate, type ProviderKey } from "@/lib/rates";
 
 type UsageEntry = EntryV2;
@@ -18,13 +18,16 @@ export default function ProjectDetail() {
   const [entries, setEntries] = useState<UsageEntry[]>(() => {
     if (typeof window === "undefined" || !projectId) return [];
     // Fill provider from project (via query) for legacy rows
-    const projectProvider = (typeof window !== "undefined" ? (new URLSearchParams(window.location.search)).get("provider") : null) || undefined;
+    const projectProvider =
+      (typeof window !== "undefined"
+        ? new URLSearchParams(window.location.search).get("provider")
+        : null) || undefined;
     return loadEntries(projectId, projectProvider ?? undefined);
   });
 
   const [date, setDate] = useState("");
 
-  // Provider/model state for the Add form (linked dropdowns)
+  // Add-form: provider/model
   const [selectedProvider, setSelectedProvider] = useState<string>("");
   useEffect(() => {
     // If a valid provider key came via query, set it; ignore values like "Claude"
@@ -33,7 +36,53 @@ export default function ProjectDetail() {
   }, [provider]);
   const [selectedModel, setSelectedModel] = useState<string>("");
 
-  // Autofill date to today on mount and after add
+  // Tokens for add form
+  const [tokens, setTokens] = useState<number>(0);
+
+  // Fetch project rate for auto-calculation (must come before any use)
+  const [projectRate, setProjectRate] = useState<number | undefined>(undefined);
+  useEffect(() => {
+    const raw = localStorage.getItem("projects");
+    if (!raw || !projectId) return;
+    try {
+      const list: Array<{ id: string | number; rateUsdPer1k?: number }> = JSON.parse(raw);
+      const p = list.find((x) => String(x.id) === String(projectId));
+      setProjectRate(p?.rateUsdPer1k);
+    } catch {
+      setProjectRate(undefined);
+    }
+  }, [projectId]);
+
+  // Derived for add form
+  const providerKey: ProviderKey | null = normalizeProvider(selectedProvider);
+  const modelOptions = providerKey ? PROVIDER_MODELS[providerKey] : [];
+  const [customRate, setCustomRate] = useState<number | undefined>(undefined);
+  const effectiveRate = customRate ?? getModelRate(selectedProvider, selectedModel, projectRate);
+  const computedCost = (() => {
+    if (!effectiveRate || !tokens || tokens <= 0) return 0;
+    return (tokens / 1000) * effectiveRate;
+  })();
+
+  // Edit modal state (pop-out)
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [isEditOpen, setIsEditOpen] = useState(false);
+  const [draftDate, setDraftDate] = useState("");
+  const [draftProvider, setDraftProvider] = useState<string>("");
+  const [draftModel, setDraftModel] = useState<string>("");
+  const [draftTokens, setDraftTokens] = useState<number>(0);
+  const [draftCustomRate, setDraftCustomRate] = useState<number | undefined>(undefined);
+
+  // Draft-derived (must be after projectRate)
+  const draftProviderKey: ProviderKey | null = normalizeProvider(draftProvider || "");
+  const draftModelOptions = draftProviderKey ? PROVIDER_MODELS[draftProviderKey] : [];
+  const draftEffectiveRate =
+    draftCustomRate ?? getModelRate(draftProvider, draftModel, projectRate);
+
+  const [saved, setSaved] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
+  useEffect(() => setHydrated(true), []);
+
+  // Autofill date to today on mount
   useEffect(() => {
     const t = new Date();
     const yyyy = t.getFullYear();
@@ -41,35 +90,6 @@ export default function ProjectDetail() {
     const dd = String(t.getDate()).padStart(2, "0");
     setDate(`${yyyy}-${mm}-${dd}`);
   }, []);
-  const [tokens, setTokens] = useState<number>(0);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editDate, setEditDate] = useState("");
-  const [editTokens, setEditTokens] = useState("");
-  const [editCost, setEditCost] = useState("");
-  const [saved, setSaved] = useState(false);
-
-  const [hydrated, setHydrated] = useState(false);
-  useEffect(() => setHydrated(true), []);
-
-  // ✅ Fetch project rate for auto-calculation
-  const [projectRate, setProjectRate] = useState<number | undefined>(undefined);
-  useEffect(() => {
-    const raw = localStorage.getItem("projects");
-    if (!raw || !projectId) return;
-    const list = JSON.parse(raw) as { id: number; rateUsdPer1k?: number }[];
-    const p = list.find((x) => String(x.id) === String(projectId));
-    setProjectRate(p?.rateUsdPer1k);
-  }, [projectId]);
-
-  const providerKey: ProviderKey | null = normalizeProvider(selectedProvider);
-  const modelOptions = providerKey ? PROVIDER_MODELS[providerKey] : [];
-  const [customRate, setCustomRate] = useState<number | undefined>(undefined);
-  const effectiveRate = customRate ?? getModelRate(selectedProvider, selectedModel, projectRate);
-
-  const computedCost = (() => {
-    if (!effectiveRate || !tokens || tokens <= 0) return 0;
-    return (tokens / 1000) * effectiveRate;
-  })();
 
   const dateRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
@@ -90,7 +110,7 @@ export default function ProjectDetail() {
     if (projectsRaw) localStorage.setItem("projects", projectsRaw);
   }, [entries, projectId]);
 
-  // Add entry with optional auto-cost
+  // Add entry
   const addEntry = (e: React.FormEvent) => {
     e.preventDefault();
     if (!date || !tokens || tokens <= 0) return;
@@ -100,13 +120,12 @@ export default function ProjectDetail() {
       date,
       tokens,
       cost: Number((computedCost || 0).toFixed(6)),
-      provider: selectedProvider || provider,   // store per-entry
-      model: selectedModel || undefined,        // store per-entry
-      rateUsdPer1k: effectiveRate,              // snapshot used for this entry
+      provider: selectedProvider || provider, // per-entry
+      model: selectedModel || undefined,      // per-entry
+      rateUsdPer1k: effectiveRate,            // snapshot
     };
 
-    const next = [newEntry, ...entries];
-    setEntries(next);
+    setEntries((prev) => [newEntry, ...prev]);
 
     // reset: keep provider, reset model; date -> today
     setTokens(0);
@@ -122,32 +141,54 @@ export default function ProjectDetail() {
     setTimeout(() => setSaved(false), 1200);
   };
 
-  // Edit entry
+  // Edit entry (open modal prefilled)
   const startEdit = (row: UsageEntry) => {
     setEditingId(row.id as string);
-    setEditDate(row.date);
-    setEditTokens(String(row.tokens));
-    setEditCost(String(row.cost));
+    setDraftDate(row.date);
+    setDraftProvider(row.provider ?? "");
+    setDraftModel(row.model ?? "");
+    setDraftTokens(Number(row.tokens) || 0);
+
+    // If the entry's provider/model isn't in our catalog, treat it as custom
+    const catRate = getModelRate(row.provider ?? "", row.model ?? "", projectRate);
+    if (typeof row.rateUsdPer1k === "number" && row.rateUsdPer1k !== catRate) {
+      setDraftCustomRate(row.rateUsdPer1k);
+    } else {
+      setDraftCustomRate(undefined);
+    }
+
+    setIsEditOpen(true);
   };
 
   const saveEdit = () => {
     if (!editingId) return;
-    setEntries(entries.map((e) => {
-      if (e.id === editingId) {
-        const tokensNum = Number(editTokens);
-        const costNum = editCost.trim() !== ""
-          ? Number(editCost)
-          : (e.rateUsdPer1k ?? projectRate)
-            ? (tokensNum / 1000) * (e.rateUsdPer1k ?? projectRate!)
-            : 0;
-        return { ...e, date: editDate, tokens: tokensNum, cost: Number(costNum.toFixed(6)) };
-      }
-      return e;
-    }));
+    const effRate = draftEffectiveRate ?? 0;
+    const newCost = effRate > 0 ? (draftTokens / 1000) * effRate : 0;
+
+    setEntries((prev) =>
+      prev.map((e) =>
+        e.id === editingId
+          ? {
+              ...e,
+              date: draftDate,
+              provider: draftProvider || e.provider,
+              model: draftModel || e.model,
+              tokens: draftTokens,
+              rateUsdPer1k: effRate || e.rateUsdPer1k,
+              cost: Number(newCost.toFixed(6)),
+            }
+          : e
+      )
+    );
+
+    setIsEditOpen(false);
     setEditingId(null);
   };
 
-  const cancelEdit = () => setEditingId(null);
+  const cancelEdit = () => {
+    setIsEditOpen(false);
+    setEditingId(null);
+  };
 
   const deleteEntry = (id: string) => setEntries(entries.filter((e) => e.id !== id));
 
@@ -186,47 +227,58 @@ export default function ProjectDetail() {
               className="flex-1 rounded-lg bg-white/10 border border-white/10 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-cyan-500/60"
             />
 
-            <select
-              value={selectedProvider}
-              onChange={(e) => {
-                const v = e.target.value;
-                if (v === "other") {
-                  const prov = window.prompt("Provider name?");
-                  const model = window.prompt("Model name?");
-                  const rateStr = window.prompt("Rate in $ per 1k tokens?");
-                  const rateNum = rateStr ? Number(rateStr) : undefined;
-                  if (!prov || !model || !rateNum || rateNum <= 0 || Number.isNaN(rateNum)) {
-                    alert("Invalid custom provider/model/rate. Please try again.");
-                    return;
+            <div className="relative flex-1">
+              <select
+                value={selectedProvider}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (v === "other") {
+                    const prov = window.prompt("Provider name?");
+                    const model = window.prompt("Model name?");
+                    const rateStr = window.prompt("Rate in $ per 1k tokens?");
+                    const rateNum = rateStr ? Number(rateStr) : undefined;
+                    if (!prov || !model || !rateNum || rateNum <= 0 || Number.isNaN(rateNum)) {
+                      alert("Invalid custom provider/model/rate. Please try again.");
+                      return;
+                    }
+                    setSelectedProvider(prov.trim());
+                    setSelectedModel(model.trim());
+                    setCustomRate(rateNum);
+                  } else {
+                    setSelectedProvider(v);
+                    setSelectedModel("");
+                    setCustomRate(undefined);
                   }
-                  setSelectedProvider(prov.trim());
-                  setSelectedModel(model.trim());
-                  setCustomRate(rateNum);
-                } else {
-                  setSelectedProvider(v);
-                  setSelectedModel("");
-                  setCustomRate(undefined);
-                }
-              }}
-              className="flex-1 rounded-lg bg-white/10 border border-white/10 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-cyan-500/60"
-            >
-              {provider && <option value={provider}>{provider}</option>}
-              {["openai","anthropic","mistral","google","deepseek","other"].map(p => (
-                <option key={p} value={p}>{p === "other" ? "Other…" : p}</option>
-              ))}
-            </select>
+                }}
+                className="w-full appearance-none rounded-lg bg-slate-800/60 border border-white/10 text-slate-100 px-3 py-2 pr-8 focus:outline-none focus:ring-2 focus:ring-cyan-500/60 disabled:bg-slate-700/40 disabled:text-slate-400 disabled:cursor-not-allowed"
+              >
+                {["openai","anthropic","mistral","google","deepseek","other"].map(p => (
+                  <option key={p} value={p}>{p === "other" ? "Other…" : p}</option>
+                ))}
+              </select>
+              <svg className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-300"
+                  viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                <path d="M5.23 7.21a.75.75 0 011.06.02L10 11.17l3.71-3.94a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"/>
+              </svg>
+            </div>
 
-            <select
-              value={selectedModel}
-              onChange={(e) => setSelectedModel(e.target.value)}
-              disabled={!providerKey && customRate === undefined}
-              className="flex-1 rounded-lg bg-white/10 border border-white/10 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-cyan-500/60"
-            >
-              <option value="">Select model</option>
-              {modelOptions.map(m => (
-                <option key={m.model} value={m.model}>{m.model}</option>
-              ))}
-            </select>
+            <div className="relative flex-1">
+              <select
+                value={selectedModel}
+                onChange={(e) => setSelectedModel(e.target.value)}
+                disabled={!providerKey && customRate === undefined}
+                className="w-full appearance-none rounded-lg bg-slate-800/60 border border-white/10 text-slate-100 px-3 py-2 pr-8 focus:outline-none focus:ring-2 focus:ring-cyan-500/60 disabled:bg-slate-700/40 disabled:text-slate-400 disabled:cursor-not-allowed"
+              >
+                <option value="">Select model</option>
+                {modelOptions.map(m => (
+                  <option key={m.model} value={m.model}>{m.model}</option>
+                ))}
+              </select>
+              <svg className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-300"
+                  viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                <path d="M5.23 7.21a.75.75 0 011.06.02L10 11.17l3.71-3.94a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01-1.06z"/>
+              </svg>
+            </div>
 
             <input
               type="number"
@@ -289,61 +341,27 @@ export default function ProjectDetail() {
                   >
                     {editingId === e.id ? (
                       <>
-                        {/* Date */}
-                        <td className="px-5 py-3">
-                          <input
-                            type="date"
-                            value={editDate}
-                            onChange={(ev) => setEditDate(ev.target.value)}
-                            className="w-full rounded bg-white/10 border border-white/10 px-2 py-1"
-                          />
-                        </td>
-
-                        {/* Provider (read-only for now) */}
+                        <td className="px-5 py-3">{e.date}</td>
                         <td className="px-5 py-3">{e.provider ?? "—"}</td>
-
-                        {/* Model (read-only for now) */}
                         <td className="px-5 py-3">{e.model ?? "—"}</td>
-
-                        {/* Tokens */}
-                        <td className="px-5 py-3 text-right">
-                          <input
-                            type="number"
-                            value={editTokens}
-                            onChange={(ev) => { setEditTokens(ev.target.value); setEditCost(""); }}
-                            className="w-full rounded bg-white/10 border border-white/10 px-2 py-1 text-right"
-                          />
-                        </td>
-
-                        {/* Rate ($/1k) */}
+                        <td className="px-5 py-3 text-right">{e.tokens.toLocaleString()}</td>
                         <td className="px-5 py-3 text-right">
                           {typeof e.rateUsdPer1k === "number" ? e.rateUsdPer1k : (projectRate ?? "—")}
                         </td>
-
-                        {/* Cost ($) – preview computed unless user typed one */}
-                        <td className="px-5 py-3 text-right">
-                          <input
-                            type="number"
-                            step="0.000001"
-                            value={
-                              editCost !== ""
-                                ? editCost
-                                : (() => {
-                                    const r = (typeof e.rateUsdPer1k === "number" ? e.rateUsdPer1k : projectRate) ?? 0;
-                                    const t = Number(editTokens || 0);
-                                    if (!r || !t) return "0";
-                                    return ((t / 1000) * r).toFixed(6);
-                                  })()
-                            }
-                            onChange={(ev) => setEditCost(ev.target.value)}
-                            className="w-full rounded bg-white/10 border border-white/10 px-2 py-1 text-right"
-                          />
-                        </td>
-
-                        {/* Actions */}
+                        <td className="px-5 py-3 text-right">${e.cost.toFixed(6)}</td>
                         <td className="px-5 py-3 text-center space-x-2">
-                          <button onClick={saveEdit} className="rounded-md px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500">Save</button>
-                          <button onClick={cancelEdit} className="rounded-md px-3 py-1.5 bg-slate-600 hover:bg-slate-500">Cancel</button>
+                          <button
+                            onClick={() => startEdit(e)}
+                            className="rounded-md px-3 py-1.5 bg-cyan-600 hover:bg-cyan-500"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => deleteEntry(e.id as string)}
+                            className="rounded-md px-3 py-1.5 bg-rose-500 hover:bg-rose-400"
+                          >
+                            Delete
+                          </button>
                         </td>
                       </>
                     ) : (
@@ -391,6 +409,117 @@ export default function ProjectDetail() {
         <p className="mt-4 text-lg font-semibold">
           Total Cost: ${totalCost.toFixed(6)}
         </p>
+        {/* Edit Modal */}
+        {isEditOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center">
+            <div className="absolute inset-0 bg-black/50" onClick={cancelEdit} />
+            <div className="relative z-10 w-full max-w-xl rounded-2xl border border-white/10 bg-[#0f172a] p-5 shadow-xl">
+              <h3 className="text-lg font-semibold mb-4">Edit Entry</h3>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm mb-1">Date</label>
+                  <input
+                    type="date"
+                    value={draftDate}
+                    onChange={(e) => setDraftDate(e.target.value)}
+                    className="w-full rounded-lg bg-white/10 border border-white/10 px-3 py-2"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm mb-1">Tokens</label>
+                  <input
+                    type="number"
+                    value={draftTokens ? String(draftTokens) : ""}
+                    onChange={(e) => setDraftTokens(Number(e.target.value))}
+                    className="w-full rounded-lg bg-white/10 border border-white/10 px-3 py-2"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm mb-1">Provider</label>
+                  <div className="relative">
+                    <select
+                      value={draftProvider}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        if (v === "other") {
+                          const prov = window.prompt("Provider name?");
+                          const model = window.prompt("Model name?");
+                          const rateStr = window.prompt("Rate in $ per 1k tokens?");
+                          const rateNum = rateStr ? Number(rateStr) : undefined;
+                          if (!prov || !model || !rateNum || rateNum <= 0 || Number.isNaN(rateNum)) {
+                            alert("Invalid custom provider/model/rate. Please try again.");
+                            return;
+                          }
+                          setDraftProvider(prov.trim());
+                          setDraftModel(model.trim());
+                          setDraftCustomRate(rateNum);
+                        } else {
+                          setDraftProvider(v);
+                          setDraftModel("");
+                          setDraftCustomRate(undefined);
+                        }
+                      }}
+                      className="w-full appearance-none rounded-lg bg-slate-800/60 border border-white/10 text-slate-100 px-3 py-2 pr-8 focus:outline-none focus:ring-2 focus:ring-cyan-500/60"
+                    >
+                      {draftProvider &&
+                        !["openai","anthropic","mistral","google","deepseek"].includes((normalizeProvider(draftProvider)||"")) && (
+                          <option value={draftProvider}>{draftProvider}</option>
+                        )}
+                      {["openai","anthropic","mistral","google","deepseek","other"].map(p => (
+                        <option key={p} value={p}>{p === "other" ? "Other…" : p}</option>
+                      ))}
+                    </select>
+                    <svg className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-300"
+                        viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                      <path d="M5.23 7.21a.75.75 0 011.06.02L10 11.17l3.71-3.94a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01-1.06z"/>
+                    </svg>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm mb-1">Model</label>
+                  <div className="relative">
+                    <select
+                      value={draftModel}
+                      onChange={(e) => setDraftModel(e.target.value)}
+                      disabled={!draftProviderKey && draftCustomRate === undefined}
+                      className="w-full appearance-none rounded-lg bg-slate-800/60 border border-white/10 text-slate-100 px-3 py-2 pr-8 focus:outline-none focus:ring-2 focus:ring-cyan-500/60 disabled:bg-slate-700/40 disabled:text-slate-400 disabled:cursor-not-allowed"
+                    >
+                      <option value="">Select model</option>
+                      {draftModelOptions.map(m => (
+                        <option key={m.model} value={m.model}>{m.model}</option>
+                      ))}
+                    </select>
+                    <svg className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-300"
+                        viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                      <path d="M5.23 7.21a.75.75 0 011.06.02L10 11.17l3.71-3.94a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01-1.06z"/>
+                    </svg>
+                  </div>
+                </div>
+
+                <div className="md:col-span-2 text-xs text-slate-400">
+                  {draftCustomRate
+                    ? <>Custom rate: <span className="text-cyan-300">${draftCustomRate}</span> / 1k</>
+                    : draftEffectiveRate
+                      ? <>Rate: <span className="text-cyan-300">${draftEffectiveRate}</span> / 1k</>
+                      : <>Select provider & model to compute cost</>}
+                </div>
+              </div>
+
+              <div className="mt-5 flex items-center justify-end gap-2">
+                <button onClick={cancelEdit} className="rounded-md px-3 py-1.5 bg-slate-600 hover:bg-slate-500">
+                  Cancel
+                </button>
+                <button onClick={saveEdit} className="rounded-md px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500">
+                  Save
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </main>
   );
