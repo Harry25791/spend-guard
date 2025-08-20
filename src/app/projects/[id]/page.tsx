@@ -3,12 +3,22 @@
 import { useState, useEffect, useRef } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import Link from "next/link";
+
+import AppShell from "@/components/layout/AppShell";
+import Aurora from "@/components/ui/Aurora";
+
 import { loadEntries, saveEntries, type EntryV2 } from "@/lib/storage";
 import {
-  downloadProjectCSV, downloadProjectJSON,
-  getViewScope, setViewScope, type ViewScope,
-  filterByScope, labelForScope, SCOPE_OPTIONS,
+  downloadProjectCSV,
+  downloadProjectJSON,
+  getViewScope,
+  setViewScope,
+  type ViewScope,
+  filterByScope,
+  labelForScope,
+  SCOPE_OPTIONS,
 } from "@/lib/io";
+
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import { PROVIDER_MODELS, normalizeProvider, getModelRate, type ProviderKey } from "@/lib/rates";
 import { estimateTokens } from "@/lib/token";
@@ -94,8 +104,7 @@ export default function ProjectDetail() {
   const modelOptions = activeProviderKey ? PROVIDER_MODELS[activeProviderKey] : [];
   const [customRate, setCustomRate] = useState<number | undefined>(undefined);
   const effectiveRate =
-    customRate ??
-    getModelRate((selectedProvider || activeProviderKey || "") as string, selectedModel, projectRate);
+    customRate ?? getModelRate((selectedProvider || activeProviderKey || "") as string, selectedModel, projectRate);
 
   // ✔ Ensure model select is ready as soon as provider is known — clear invalid model
   useEffect(() => {
@@ -281,7 +290,9 @@ export default function ProjectDetail() {
 
   // ── Render
   return (
-    <main className="min-h-screen w-full bg-gradient-to-br from-[#0b1023] via-[#0e1330] to-[#111827] text-slate-100">
+    <AppShell>
+      <Aurora />
+
       <div className="mx-auto max-w-5xl px-6 py-6">
         <div className="mb-4">
           <Link href="/" className="text-cyan-300 hover:text-cyan-200 underline decoration-cyan-500/40">
@@ -338,7 +349,7 @@ export default function ProjectDetail() {
         </div>
 
         {/* Per-model breakdown (project, filtered) */}
-        <div className="mb-6 rounded-2xl border border-white/10 bg-white/5 backdrop-blur-sm shadow-lg shadow-cyan-900/20 p-4">
+        <div className="sg-card p-4 mb-6">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-semibold text-slate-200">
               Per-model breakdown — {labelForScope(scope)}
@@ -444,7 +455,7 @@ export default function ProjectDetail() {
         </p>
 
         {/* Add Entry Card */}
-        <div className="mb-6 rounded-2xl border border-white/10 bg-white/5 backdrop-blur-sm shadow-lg shadow-cyan-900/20 p-4">
+        <div className="sg-card p-4 mb-6">
           <div className="mb-3 flex items-center gap-2 text-sm">
             <span className="text-slate-400">Entry mode:</span>
             <button
@@ -564,9 +575,9 @@ export default function ProjectDetail() {
         </div>
 
         {!manualTokens && (
-          <div className="mb-6 rounded-2xl border border-white/10 bg-white/5 backdrop-blur-sm shadow-lg shadow-cyan-900/20 p-4">
+          <div className="sg-card p-4 mb-6">
             <div className="mb-2 flex items-center justify-between">
-              <h3 className="text-sm font-medium text-slate-2 00">Token Counter</h3>
+              <h3 className="text-sm font-medium text-slate-200">Token Counter</h3>
               <span className="text-xs text-slate-400">
                 {effectiveRate ? `@ $${effectiveRate}/1k` : projectRate ? `@ project $${projectRate}/1k` : "select provider+model"}
               </span>
@@ -595,7 +606,7 @@ export default function ProjectDetail() {
         )}
 
         {/* Table (mirrors scope) */}
-        <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-sm shadow-lg shadow-cyan-900/20 overflow-hidden">
+        <div className="sg-card overflow-hidden">
           <table className="w-full">
             <thead className="bg-white/5">
               <tr className="text-left text-slate-300 text-sm">
@@ -787,6 +798,6 @@ export default function ProjectDetail() {
           </div>
         )}
       </div>
-    </main>
+    </AppShell>
   );
 }

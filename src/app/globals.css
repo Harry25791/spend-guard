@@ -1,26 +1,29 @@
+/* src/app/globals.css */
 @import "tailwindcss";
 
+/* theme tokens */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --bg-1: #0b1023;
+  --bg-2: #0e1330;
+  --bg-3: #111827;
+  --violet: #8b5cf6;
+  --purple: #7c3aed;
+  --cyan: #22d3ee;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
+html, body { height: 100%; }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background:
+    radial-gradient(1200px 800px at 70% -10%, rgba(139,92,246,.22), transparent 60%),
+    radial-gradient(900px 600px at -10% 30%, rgba(34,211,238,.16), transparent 55%),
+    linear-gradient(135deg, var(--bg-1), var(--bg-2) 40%, var(--bg-3));
+  color: rgb(226 232 240);
+}
+
+/* custom utility as a Tailwind component layer */
+@layer components {
+  .sg-card {
+    @apply rounded-2xl border border-white/10 bg-white/5 backdrop-blur-md shadow-[0_10px_30px_rgba(2,6,23,.35)];
+  }
 }

@@ -3,6 +3,9 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import Link from "next/link";
 
+import AppShell from "@/components/layout/AppShell";
+import Aurora from "@/components/ui/Aurora";
+
 // Types
 import type { Project as ProjectType } from "@/lib/storage";
 
@@ -46,7 +49,6 @@ type Project = ProjectType;
 function ClientOnly({ children }: { children: React.ReactNode }) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
-  // render nothing on server; content only on client
   return <div suppressHydrationWarning>{mounted ? children : null}</div>;
 }
 
@@ -108,7 +110,6 @@ export default function Home() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    // Merge-only write so other keys (e.g., viewScope) remain intact
     const prev = localStorage.getItem("settings");
     let merged: any = {};
     try {
@@ -255,9 +256,7 @@ export default function Home() {
         const total = filtered.reduce((s, e) => s + (Number(e.cost) || 0), 0);
         const lastDate =
           filtered.length > 0
-            ? filtered
-                .map((e) => e.date)
-                .reduce((a, b) => (a > b ? a : b))
+            ? filtered.map((e) => e.date).reduce((a, b) => (a > b ? a : b))
             : null;
         map[p.id] = { total, lastDate };
       } catch {
@@ -326,7 +325,9 @@ export default function Home() {
     scope === "lifetime" ? "Totals — By Month (Lifetime)" : `Totals — By Day (${labelForScope(scope)})`;
 
   return (
-    <main className="min-h-screen w-full bg-gradient-to-br from-[#0b1023] via-[#0e1330] to-[#111827] text-slate-100">
+    <AppShell>
+      <Aurora />
+
       <header className="sticky top-0 z-10 backdrop-blur supports-[backdrop-filter]:bg-white/0">
         <div className="mx-auto max-w-5xl px-6 py-5 flex items-center justify-between">
           <h1 className="text-xl md:text-2xl font-semibold tracking-tight">
@@ -340,11 +341,9 @@ export default function Home() {
               className="relative rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 text-slate-200 hover:bg-white/10"
               title="Alerts"
             >
-              {/* Bell icon */}
               <svg viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5">
                 <path d="M12 2a6 6 0 00-6 6v2.268c0 .52-.214 1.018-.593 1.376L4 14h16l-1.407-2.356A1.94 1.94 0 0118 10.268V8a6 6 0 00-6-6zm0 20a3 3 0 01-3-3h6a3 3 0 01-3 3z" />
               </svg>
-              {/* Red dot when over limit */}
               {isOverLimit && (
                 <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-rose-500 ring-2 ring-[#0e1330]" />
               )}
@@ -376,7 +375,7 @@ export default function Home() {
 
       <section className="mx-auto max-w-5xl px-6 py-8">
         {/* Add Project Card */}
-        <div className="mb-6 rounded-2xl border border-white/10 bg-white/5 backdrop-blur-sm shadow-lg shadow-cyan-900/20 p-4">
+        <div className="sg-card p-4 mb-6">
           <form onSubmit={addProject} className="flex flex-col sm:flex-row gap-3">
             <input
               ref={nameRef}
@@ -398,7 +397,7 @@ export default function Home() {
 
         {/* Per-model breakdown (global, filtered) */}
         <ClientOnly>
-          <div className="mb-6 rounded-2xl border border-white/10 bg-white/5 backdrop-blur-sm shadow-lg shadow-cyan-900/20 p-4">
+          <div className="sg-card p-4 mb-6">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-semibold text-slate-200">
                 Per-model breakdown — {labelForScope(scope)}
@@ -461,7 +460,7 @@ export default function Home() {
 
         {/* Monthly/Daily totals line chart */}
         <ClientOnly>
-          <div className="mb-6 rounded-2xl border border-white/10 bg-white/5 backdrop-blur-sm shadow-lg shadow-cyan-900/20 p-4">
+          <div className="sg-card p-4 mb-6">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-semibold text-slate-200">{timelineTitle}</h3>
             </div>
@@ -480,7 +479,7 @@ export default function Home() {
         </ClientOnly>
 
         {/* Projects Table Card (mirrors selected scope) */}
-        <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-sm shadow-lg shadow-cyan-900/20 overflow-hidden">
+        <div className="sg-card overflow-hidden">
           <table className="w-full">
             <thead className="bg-white/5">
               <tr className="text-left text-slate-300 text-sm">
@@ -663,6 +662,6 @@ export default function Home() {
           </div>
         )}
       </section>
-    </main>
+    </AppShell>
   );
 }
