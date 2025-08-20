@@ -4,6 +4,8 @@ import { useState, useEffect, useRef } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { loadEntries, saveEntries, type EntryV2 } from "@/lib/storage";
+import { downloadProjectCSV, downloadProjectJSON, getViewScope, setViewScope } from "@/lib/io";
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import { PROVIDER_MODELS, normalizeProvider, getModelRate, type ProviderKey } from "@/lib/rates";
 import { estimateTokens } from "@/lib/token";
 
@@ -42,7 +44,10 @@ export default function ProjectDetail() {
     for (const e of entries) {
       if (e?.provider) {
         const k = normalizeProvider(e.provider);
-        if (k) { found = k; break; }
+        if (k) {
+          found = k;
+          break;
+        }
       }
     }
     setLastProviderKey(found);
@@ -93,12 +98,22 @@ export default function ProjectDetail() {
     projectRate
   );
 
+  // ✔️ Ensure model select is ready as soon as provider is known.
+  //    1) If provider changes and current model isn't valid, clear it.
+  useEffect(() => {
+    if (!activeProviderKey) return;
+    const models = PROVIDER_MODELS[activeProviderKey] ?? [];
+    if (selectedModel && !models.some((m) => m.model === selectedModel || (m as any).id === selectedModel)) {
+      setSelectedModel("");
+    }
+  }, [activeProviderKey, selectedModel]);
+
   // Token Counter (paste text -> tokens/cost)
   const [counterText, setCounterText] = useState("");
   const counterTokens = estimateTokens(counterText, selectedModel || undefined);
   const counterCost = effectiveRate ? (counterTokens / 1000) * effectiveRate : 0;
 
-  const computedCost = (!effectiveRate || !tokens || tokens <= 0) ? 0 : (tokens / 1000) * effectiveRate;
+  const computedCost = !effectiveRate || !tokens || tokens <= 0 ? 0 : (tokens / 1000) * effectiveRate;
 
   // ── Edit modal state
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -111,16 +126,20 @@ export default function ProjectDetail() {
 
   // Draft-derived with fallback to selected/last-used/query (must be after projectRate)
   const draftFallbackProvider =
-    draftProvider ||
-    selectedProvider ||
-    (lastProviderKey || "") ||
-    (queryProviderKey || "") ||
-    "";
+    draftProvider || selectedProvider || (lastProviderKey || "") || (queryProviderKey || "") || "";
 
   const activeDraftProviderKey: ProviderKey | null = normalizeProvider(draftFallbackProvider);
   const draftModelOptions = activeDraftProviderKey ? PROVIDER_MODELS[activeDraftProviderKey] : [];
-  const draftEffectiveRate =
-    draftCustomRate ?? getModelRate(draftFallbackProvider, draftModel, projectRate);
+  const draftEffectiveRate = draftCustomRate ?? getModelRate(draftFallbackProvider, draftModel, projectRate);
+
+  // ✔️ Same guard for the Edit modal: clear invalid model when provider changes
+  useEffect(() => {
+    if (!activeDraftProviderKey) return;
+    const models = PROVIDER_MODELS[activeDraftProviderKey] ?? [];
+    if (draftModel && !models.some((m) => m.model === draftModel || (m as any).id === draftModel)) {
+      setDraftModel("");
+    }
+  }, [activeDraftProviderKey, draftModel]);
 
   // ── Misc
   const [saved, setSaved] = useState(false);
@@ -130,7 +149,7 @@ export default function ProjectDetail() {
   // Autofill date to today on mount
   useEffect(() => {
     const t = new Date();
-    const yyyy = t.getFullYear();
+       const yyyy = t.getFullYear();
     const mm = String(t.getMonth() + 1).padStart(2, "0");
     const dd = String(t.getDate()).padStart(2, "0");
     setDate(`${yyyy}-${mm}-${dd}`);
@@ -197,7 +216,7 @@ export default function ProjectDetail() {
       model: selectedModel || undefined,
       rateUsdPer1k: effectiveRate,
     };
-    setEntries(prev => [newEntry, ...prev]);
+    setEntries((prev) => [newEntry, ...prev]);
     setCounterText(""); // keep date/provider/model
     setSaved(true);
     setTimeout(() => setSaved(false), 1200);
@@ -260,8 +279,25 @@ export default function ProjectDetail() {
     if (window.confirm("Are you sure you want to clear all entries?")) setEntries([]);
   };
 
+  // ── View scope
+  const [scope, setScope] = useState<"month" | "lifetime">(() =>
+    typeof window === "undefined" ? "month" : getViewScope()
+  );
+  useEffect(() => {
+    if (typeof window !== "undefined") setViewScope(scope);
+  }, [scope]);
+
+  // ── Derived filtered entries
+  const viewEntries = (() => {
+    const now = new Date();
+    const yyyy = now.getUTCFullYear();
+    const mm = String(now.getUTCMonth() + 1).padStart(2, "0");
+    const prefix = `${yyyy}-${mm}`;
+    return scope === "month" ? entries.filter((e) => (e.date || "").startsWith(prefix)) : entries;
+  })();
+
   // ── Totals
-  const totalCost = entries.reduce((sum, e) => sum + e.cost, 0);
+  const totalCost = viewEntries.reduce((sum, e) => sum + e.cost, 0);
 
   // ── Render
   return (
@@ -275,14 +311,140 @@ export default function ProjectDetail() {
 
         <h1 className="text-2xl font-semibold tracking-tight">{name}</h1>
         <p className="text-slate-400 mb-6">{provider} — Usage Tracker</p>
+        <div className="flex flex-wrap items-center gap-3 mb-4">
+          <div className="inline-flex rounded-lg border border-white/10 overflow-hidden">
+            <button
+              onClick={() => setScope("month")}
+              className={scope === "month" ? "px-3 py-1.5 text-sm bg-white/10 text-white" : "px-3 py-1.5 text-sm text-slate-300 hover:bg-white/5"}
+            >
+              This Month
+            </button>
+            <button
+              onClick={() => setScope("lifetime")}
+              className={scope === "lifetime" ? "px-3 py-1.5 text-sm bg-white/10 text-white" : "px-3 py-1.5 text-sm text-slate-300 hover:bg-white/5"}
+            >
+              Lifetime
+            </button>
+          </div>
+          <button
+            onClick={() => downloadProjectCSV(String(projectId), name, provider, projectRate, viewEntries)}
+            className="rounded-lg px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-sm"
+          >
+            Export CSV — {scope === "month" ? "This Month" : "Lifetime"}
+          </button>
+          <button
+            onClick={() => downloadProjectJSON(String(projectId), name, provider, projectRate, viewEntries)}
+            className="rounded-lg px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-sm"
+          >
+            Export JSON — {scope === "month" ? "This Month" : "Lifetime"}
+          </button>
+        </div>
+
+        {/* Per-model breakdown (project, filtered) */}
+        <div className="mb-6 rounded-2xl border border-white/10 bg-white/5 backdrop-blur-sm shadow-lg shadow-cyan-900/20 p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-semibold text-slate-200">
+              Per-model breakdown — {scope === "month" ? "This Month" : "Lifetime"}
+            </h3>
+            <span className="text-xs text-slate-400">by cost</span>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
+            <div className="h-56 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={(function () {
+                      const m: Record<string, { name: string; value: number; tokens: number }> = {};
+                      for (const e of viewEntries) {
+                        const prov = e.provider ?? "unknown";
+                        const model = e.model ?? "unknown";
+                        const key = prov + "/" + model;
+                        const v = m[key] || { name: key, value: 0, tokens: 0 };
+                        v.value += Number(e.cost) || 0;
+                        v.tokens += Number(e.tokens) || 0;
+                        m[key] = v;
+                      }
+                      return Object.values(m).map((r) => ({ name: r.name, value: Number(r.value.toFixed(2)) }));
+                    })()}
+                    dataKey="value"
+                    nameKey="name"
+                    cx="50%"
+                    cy="50%"
+                    outerRadius={80}
+                  >
+                    {((function () {
+                      const m: Record<string, { name: string; value: number }> = {};
+                      for (const e of viewEntries) {
+                        const prov = e.provider ?? "unknown";
+                        const model = e.model ?? "unknown";
+                        const key = prov + "/" + model;
+                        const v = m[key] || { name: key, value: 0 };
+                        v.value += Number(e.cost) || 0;
+                        m[key] = v;
+                      }
+                      return Object.values(m);
+                    })()).map((_, i) => (
+                      <Cell key={`c-${i}`} />
+                    ))}
+                  </Pie>
+                  <Tooltip />
+                  <Legend />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="text-slate-300">
+                  <tr>
+                    <th className="text-left py-2 pr-4">Provider/Model</th>
+                    <th className="text-right py-2 pr-4">Tokens</th>
+                    <th className="text-right py-2">Cost ($)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(() => {
+                    const m: Record<string, { name: string; tokens: number; cost: number }> = {};
+                    for (const e of viewEntries) {
+                      const prov = e.provider ?? "unknown";
+                      const model = e.model ?? "unknown";
+                      const key = prov + "/" + model;
+                      const v = m[key] || { name: key, tokens: 0, cost: 0 };
+                      v.tokens += Number(e.tokens) || 0;
+                      v.cost += Number(e.cost) || 0;
+                      m[key] = v;
+                    }
+                    return Object.values(m)
+                      .sort((a, b) => b.cost - a.cost)
+                      .map((r, idx) => (
+                        <tr key={idx} className="border-t border-white/10">
+                          <td className="py-2 pr-4">{r.name}</td>
+                          <td className="py-2 pr-4 text-right">{r.tokens.toLocaleString()}</td>
+                          <td className="py-2 text-right">{r.cost.toFixed(2)}</td>
+                        </tr>
+                      ));
+                  })()}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
         <p className="text-slate-400 mb-2">
-          {customRate
-            ? <>Custom rate: <span className="text-cyan-300">${customRate.toFixed(4)}</span> per 1k tokens</>
-            : effectiveRate
-              ? <>Rate: <span className="text-cyan-300">${effectiveRate.toFixed(4)}</span> per 1k tokens</>
-              : projectRate !== undefined
-                ? <>Project default: <span className="text-cyan-300">${projectRate.toFixed(4)}</span> per 1k tokens</>
-                : <>Select a provider/model to compute cost</>}
+          {customRate ? (
+            <>
+              Custom rate: <span className="text-cyan-300">${customRate.toFixed(4)}</span> per 1k tokens
+            </>
+          ) : effectiveRate ? (
+            <>
+              Rate: <span className="text-cyan-300">${effectiveRate.toFixed(4)}</span> per 1k tokens
+            </>
+          ) : projectRate !== undefined ? (
+            <>
+              Project default: <span className="text-cyan-300">${projectRate.toFixed(4)}</span> per 1k tokens
+            </>
+          ) : (
+            <>Select a provider/model to compute cost</>
+          )}
         </p>
 
         {/* Add Entry Card */}
@@ -339,32 +501,52 @@ export default function ProjectDetail() {
                 }}
                 className="w-full appearance-none rounded-lg bg-slate-800/60 border border-white/10 text-slate-100 px-3 py-2 pr-8 focus:outline-none focus:ring-2 focus:ring-cyan-500/60 disabled:bg-slate-700/40 disabled:text-slate-400 disabled:cursor-not-allowed"
               >
-                {["openai","anthropic","mistral","google","deepseek","other"].map(p => (
-                  <option key={p} value={p}>{p === "other" ? "Other…" : p}</option>
+                {["openai", "anthropic", "mistral", "google", "deepseek", "other"].map((p) => (
+                  <option key={p} value={p}>
+                    {p === "other" ? "Other…" : p}
+                  </option>
                 ))}
               </select>
-              <svg className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-300"
-                   viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                <path d="M5.23 7.21a.75.75 0 011.06.02L10 11.17l3.71-3.94a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01-1.06z"/>
+              <svg
+                className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-300"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+                aria-hidden="true"
+              >
+                <path d="M5.23 7.21a.75.75 0 011.06.02L10 11.17l3.71-3.94a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01-1.06z" />
               </svg>
             </div>
 
             {/* Model */}
             <div className="relative flex-1">
+              {/*
+                ✔️ Key forces a remount when provider becomes available,
+                   ensuring the select immediately becomes interactive.
+              */}
               <select
+                key={activeProviderKey || (customRate !== undefined ? "custom" : "none")}
                 value={selectedModel}
                 onChange={(e) => setSelectedModel(e.target.value)}
                 disabled={!activeProviderKey && customRate === undefined}
-                className="w-full appearance-none rounded-lg bg-slate-800/60 border border-white/10 text-slate-100 px-3 py-2 pr-8 focus:outline-none focus:ring-2 focus:ring-cyan-500/60 disabled:bg-slate-700/40 disabled:text-slate-400 disabled:cursor-not-allowed"
+                className={`w-full appearance-none rounded-lg bg-slate-800/60 border border-white/10 text-slate-100 px-3 py-2 pr-8 focus:outline-none focus:ring-2 focus:ring-cyan-500/60 disabled:bg-slate-700/40 disabled:text-slate-400 ${
+                  !activeProviderKey && customRate === undefined ? "cursor-not-allowed" : "cursor-pointer"
+                }`}
               >
-                <option value="">Select model</option>
-                {modelOptions.map(m => (
-                  <option key={m.model} value={m.model}>{m.model}</option>
-                ))}
+                <option value="">{activeProviderKey ? "Select model" : "Choose a provider first"}</option>
+                {activeProviderKey &&
+                  modelOptions.map((m) => (
+                    <option key={m.model} value={m.model}>
+                      {m.model}
+                    </option>
+                  ))}
               </select>
-              <svg className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-300"
-                   viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                <path d="M5.23 7.21a.75.75 0 011.06.02L10 11.17l3.71-3.94a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01-1.06z"/>
+              <svg
+                className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-300"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+                aria-hidden="true"
+              >
+                <path d="M5.23 7.21a.75.75 0 011.06.02L10 11.17l3.71-3.94a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01-1.06z" />
               </svg>
             </div>
 
@@ -393,8 +575,8 @@ export default function ProjectDetail() {
             {customRate
               ? `Custom rate: $${customRate}/1k tokens`
               : effectiveRate
-                ? `Rate: $${effectiveRate}/1k tokens`
-                : "Pick a provider and model to enable tokens → cost"}
+              ? `Rate: $${effectiveRate}/1k tokens`
+              : "Pick a provider and model to enable tokens → cost"}
           </p>
 
           {saved && <p className="text-emerald-400 text-sm mt-2">✅ Saved</p>}
@@ -450,11 +632,15 @@ export default function ProjectDetail() {
             <tbody>
               {!hydrated ? (
                 <tr>
-                  <td colSpan={7} className="px-5 py-8 text-center text-slate-400">Loading…</td>
+                  <td colSpan={7} className="px-5 py-8 text-center text-slate-400">
+                    Loading…
+                  </td>
                 </tr>
               ) : entries.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-5 py-8 text-center text-slate-400">No usage entries yet</td>
+                  <td colSpan={7} className="px-5 py-8 text-center text-slate-400">
+                    No usage entries yet
+                  </td>
                 </tr>
               ) : (
                 entries.map((e, i) => (
@@ -467,14 +653,11 @@ export default function ProjectDetail() {
                     <td className="px-5 py-3">{e.model ?? "—"}</td>
                     <td className="px-5 py-3 text-right">{e.tokens.toLocaleString()}</td>
                     <td className="px-5 py-3 text-right">
-                      {typeof e.rateUsdPer1k === "number" ? e.rateUsdPer1k : (projectRate ?? "—")}
+                      {typeof e.rateUsdPer1k === "number" ? e.rateUsdPer1k : projectRate ?? "—"}
                     </td>
                     <td className="px-5 py-3 text-right">${e.cost.toFixed(6)}</td>
                     <td className="px-5 py-3 text-center space-x-2">
-                      <button
-                        onClick={() => startEdit(e)}
-                        className="rounded-md px-3 py-1.5 bg-cyan-600 hover:bg-cyan-500"
-                      >
+                      <button onClick={() => startEdit(e)} className="rounded-md px-3 py-1.5 bg-cyan-600 hover:bg-cyan-500">
                         Edit
                       </button>
                       <button
@@ -493,10 +676,7 @@ export default function ProjectDetail() {
 
         {entries.length > 0 && (
           <div className="flex justify-end pt-4">
-            <button
-              onClick={clearAllEntries}
-              className="rounded-lg px-4 py-2 bg-rose-600 hover:bg-rose-500 transition"
-            >
+            <button onClick={clearAllEntries} className="rounded-lg px-4 py-2 bg-rose-600 hover:bg-rose-500 transition">
               Clear All Entries
             </button>
           </div>
@@ -560,16 +740,22 @@ export default function ProjectDetail() {
                       className="w-full appearance-none rounded-lg bg-slate-800/60 border border-white/10 text-slate-100 px-3 py-2 pr-8 focus:outline-none focus:ring-2 focus:ring-cyan-500/60"
                     >
                       {draftProvider &&
-                        !["openai","anthropic","mistral","google","deepseek"].includes((normalizeProvider(draftProvider)||"")) && (
-                          <option value={draftProvider}>{draftProvider}</option>
-                        )}
-                      {["openai","anthropic","mistral","google","deepseek","other"].map(p => (
-                        <option key={p} value={p}>{p === "other" ? "Other…" : p}</option>
+                        !["openai", "anthropic", "mistral", "google", "deepseek"].includes(
+                          (normalizeProvider(draftProvider) || "") as string
+                        ) && <option value={draftProvider}>{draftProvider}</option>}
+                      {["openai", "anthropic", "mistral", "google", "deepseek", "other"].map((p) => (
+                        <option key={p} value={p}>
+                          {p === "other" ? "Other…" : p}
+                        </option>
                       ))}
                     </select>
-                    <svg className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-300"
-                         viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                      <path d="M5.23 7.21a.75.75 0 011.06.02L10 11.17l3.71-3.94a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01-1.06z"/>
+                    <svg
+                      className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-300"
+                      viewBox="0 0 20 20"
+                      fill="currentColor"
+                      aria-hidden="true"
+                    >
+                      <path d="M5.23 7.21a.75.75 0 011.06.02L10 11.17l3.71-3.94a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01-1.06z" />
                     </svg>
                   </div>
                 </div>
@@ -578,29 +764,45 @@ export default function ProjectDetail() {
                   <label className="block text-sm mb-1">Model</label>
                   <div className="relative">
                     <select
+                      key={activeDraftProviderKey || (draftCustomRate !== undefined ? "custom" : "none")}
                       value={draftModel}
                       onChange={(e) => setDraftModel(e.target.value)}
                       disabled={!activeDraftProviderKey && draftCustomRate === undefined}
-                      className="w-full appearance-none rounded-lg bg-slate-800/60 border border-white/10 text-slate-100 px-3 py-2 pr-8 focus:outline-none focus:ring-2 focus:ring-cyan-500/60 disabled:bg-slate-700/40 disabled:text-slate-400 disabled:cursor-not-allowed"
+                      className={`w-full appearance-none rounded-lg bg-slate-800/60 border border-white/10 text-slate-100 px-3 py-2 pr-8 focus:outline-none focus:ring-2 focus:ring-cyan-500/60 disabled:bg-slate-700/40 disabled:text-slate-400 ${
+                        !activeDraftProviderKey && draftCustomRate === undefined ? "cursor-not-allowed" : "cursor-pointer"
+                      }`}
                     >
-                      <option value="">Select model</option>
-                      {draftModelOptions.map(m => (
-                        <option key={m.model} value={m.model}>{m.model}</option>
-                      ))}
+                      <option value="">{activeDraftProviderKey ? "Select model" : "Choose a provider first"}</option>
+                      {activeDraftProviderKey &&
+                        draftModelOptions.map((m) => (
+                          <option key={m.model} value={m.model}>
+                            {m.model}
+                          </option>
+                        ))}
                     </select>
-                    <svg className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-300"
-                         viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                      <path d="M5.23 7.21a.75.75 0 011.06.02L10 11.17l3.71-3.94a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01-1.06z"/>
+                    <svg
+                      className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-300"
+                      viewBox="0 0 20 20"
+                      fill="currentColor"
+                      aria-hidden="true"
+                    >
+                      <path d="M5.23 7.21a.75.75 0 011.06.02L10 11.17l3.71-3.94a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01-1.06z" />
                     </svg>
                   </div>
                 </div>
 
                 <div className="md:col-span-2 text-xs text-slate-400">
-                  {draftCustomRate
-                    ? <>Custom rate: <span className="text-cyan-300">${draftCustomRate}</span> / 1k</>
-                    : draftEffectiveRate
-                      ? <>Rate: <span className="text-cyan-300">${draftEffectiveRate}</span> / 1k</>
-                      : <>Select provider & model to compute cost</>}
+                  {draftCustomRate ? (
+                    <>
+                      Custom rate: <span className="text-cyan-300">${draftCustomRate}</span> / 1k
+                    </>
+                  ) : draftEffectiveRate ? (
+                    <>
+                      Rate: <span className="text-cyan-300">${draftEffectiveRate}</span> / 1k
+                    </>
+                  ) : (
+                    <>Select provider & model to compute cost</>
+                  )}
                 </div>
               </div>
 
