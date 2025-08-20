@@ -16,6 +16,9 @@ import {
   getViewScope,
   setViewScope,
   type ViewScope,
+  labelForScope,
+  filterByScope,
+  SCOPE_OPTIONS,
 } from "@/lib/io";
 
 // Optional provider utils (kept for future use)
@@ -47,20 +50,6 @@ function ClientOnly({ children }: { children: React.ReactNode }) {
   return <div suppressHydrationWarning>{mounted ? children : null}</div>;
 }
 
-// -------- helpers --------
-function getProjectTotals(projectId: string) {
-  try {
-    const raw = localStorage.getItem(`entries-${projectId}`);
-    if (!raw) return { total: 0, lastDate: null as string | null };
-    const entries: { date: string; tokens: number; cost: number }[] = JSON.parse(raw);
-    const total = entries.reduce((s, e) => s + (Number(e.cost) || 0), 0);
-    const lastDate = entries.length ? entries[entries.length - 1].date : null;
-    return { total, lastDate };
-  } catch {
-    return { total: 0, lastDate: null };
-  }
-}
-
 // present but unused right now (kept so imports aren’t removed)
 function getDefaultRate(providerInput: string): number | undefined {
   const key = normalizeProvider(providerInput);
@@ -68,13 +57,14 @@ function getDefaultRate(providerInput: string): number | undefined {
   return (PROVIDER_DEFAULTS as Record<string, number>)[key];
 }
 
-// -------- component --------
 export default function Home() {
-  // Persisted scope (This Month / Lifetime)
-  const [scope, setScopeState] = useState<ViewScope>(() => {
-    if (typeof window === "undefined") return "month";
-    return getViewScope();
-  });
+  // Persisted scope — hydration-safe: start as "month" on BOTH server and first client render.
+  const [scope, setScopeState] = useState<ViewScope>("month");
+  useEffect(() => {
+    try {
+      setScopeState(getViewScope());
+    } catch {}
+  }, []);
   const setScope = (s: ViewScope) => {
     setScopeState(s);
     if (typeof window !== "undefined") setViewScope(s);
@@ -129,19 +119,13 @@ export default function Home() {
     localStorage.setItem("settings", JSON.stringify(merged));
   }, [settings]);
 
-  // Totals + provider labels per project
-  const [totals, setTotals] = useState<Record<string, { total: number; lastDate: string | null }>>({});
+  // Provider labels per project (lifetime)
   const [providerLabels, setProviderLabels] = useState<Record<string, string>>({});
   useEffect(() => {
     localStorage.setItem("projects", JSON.stringify(projects));
 
-    const totalsMap: Record<string, { total: number; lastDate: string | null }> = {};
     const providerMap: Record<string, string> = {};
-
     for (const p of projects) {
-      totalsMap[p.id] = getProjectTotals(p.id);
-
-      // compute provider label from entries
       const raw = localStorage.getItem(`entries-${p.id}`);
       if (!raw) {
         providerMap[p.id] = "—";
@@ -161,7 +145,6 @@ export default function Home() {
       }
     }
 
-    setTotals(totalsMap);
     setProviderLabels(providerMap);
   }, [projects]);
 
@@ -245,7 +228,7 @@ export default function Home() {
   const [modelExpanded, setModelExpanded] = useState(false);
   useEffect(() => setModelExpanded(false), [scope]); // reset on scope change
 
-  // Timeline: day (for month) or month (for lifetime)
+  // Timeline: day for all non-lifetime scopes; month for lifetime
   const timeline = useMemo(() => {
     const flat: Array<{ date: string; cost: number; tokens?: number }> = [];
     for (const p of filteredAll.projects) {
@@ -253,9 +236,36 @@ export default function Home() {
         flat.push({ date: e.date, cost: Number(e.cost) || 0, tokens: Number(e.tokens) || 0 });
       }
     }
-    const period = scope === "month" ? "day" : "month";
+    const period = scope === "lifetime" ? "month" : "day";
     return groupEntriesByPeriod(flat, period);
   }, [filteredAll, scope]);
+
+  // Per-project totals for the CURRENT scope (drives the table)
+  const scopedTotals = useMemo(() => {
+    const map: Record<string, { total: number; lastDate: string | null }> = {};
+    for (const p of projects) {
+      const raw = localStorage.getItem(`entries-${p.id}`);
+      if (!raw) {
+        map[p.id] = { total: 0, lastDate: null };
+        continue;
+      }
+      try {
+        const arr: Array<{ date: string; cost: number }> = JSON.parse(raw);
+        const filtered = arr.filter((e) => filterByScope(e?.date || "", scope));
+        const total = filtered.reduce((s, e) => s + (Number(e.cost) || 0), 0);
+        const lastDate =
+          filtered.length > 0
+            ? filtered
+                .map((e) => e.date)
+                .reduce((a, b) => (a > b ? a : b))
+            : null;
+        map[p.id] = { total, lastDate };
+      } catch {
+        map[p.id] = { total: 0, lastDate: null };
+      }
+    }
+    return map;
+  }, [projects, scope, hydrated]);
 
   // -------- actions --------
   const exportData = () => {
@@ -312,6 +322,9 @@ export default function Home() {
   };
 
   // -------- render --------
+  const timelineTitle =
+    scope === "lifetime" ? "Totals — By Month (Lifetime)" : `Totals — By Day (${labelForScope(scope)})`;
+
   return (
     <main className="min-h-screen w-full bg-gradient-to-br from-[#0b1023] via-[#0e1330] to-[#111827] text-slate-100">
       <header className="sticky top-0 z-10 backdrop-blur supports-[backdrop-filter]:bg-white/0">
@@ -388,7 +401,7 @@ export default function Home() {
           <div className="mb-6 rounded-2xl border border-white/10 bg-white/5 backdrop-blur-sm shadow-lg shadow-cyan-900/20 p-4">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-semibold text-slate-200">
-                Per-model breakdown — {scope === "month" ? "This Month" : "Lifetime"}
+                Per-model breakdown — {labelForScope(scope)}
               </h3>
               <span className="text-xs text-slate-400">Top 8 by cost</span>
             </div>
@@ -450,9 +463,7 @@ export default function Home() {
         <ClientOnly>
           <div className="mb-6 rounded-2xl border border-white/10 bg-white/5 backdrop-blur-sm shadow-lg shadow-cyan-900/20 p-4">
             <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-semibold text-slate-200">
-                Totals — {scope === "month" ? "By Day (This Month)" : "By Month (Lifetime)"}
-              </h3>
+              <h3 className="text-sm font-semibold text-slate-200">{timelineTitle}</h3>
             </div>
             <div className="h-56 w-full">
               <ResponsiveContainer width="100%" height="100%">
@@ -468,14 +479,14 @@ export default function Home() {
           </div>
         </ClientOnly>
 
-        {/* Projects Table Card */}
+        {/* Projects Table Card (mirrors selected scope) */}
         <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-sm shadow-lg shadow-cyan-900/20 overflow-hidden">
           <table className="w-full">
             <thead className="bg-white/5">
               <tr className="text-left text-slate-300 text-sm">
                 <th className="px-5 py-3">Project</th>
                 <th className="px-5 py-3">Provider</th>
-                <th className="px-5 py-3 text-right">Total ($)</th>
+                <th className="px-5 py-3 text-right">Total ($) — {labelForScope(scope)}</th>
                 <th className="px-5 py-3 text-center">Actions</th>
               </tr>
             </thead>
@@ -505,12 +516,14 @@ export default function Home() {
                       >
                         {p.name}
                       </Link>
-                      {totals[p.id]?.lastDate && (
-                        <div className="text-xs text-slate-400 mt-1">Last: {totals[p.id].lastDate}</div>
+                      {scopedTotals[p.id]?.lastDate && (
+                        <div className="text-xs text-slate-400 mt-1">Last: {scopedTotals[p.id].lastDate}</div>
                       )}
                     </td>
                     <td className="px-5 py-3 text-slate-200">{hydrated ? providerLabels[p.id] ?? "—" : "—"}</td>
-                    <td className="px-5 py-3 text-right font-medium">${(totals[p.id]?.total ?? 0).toFixed(2)}</td>
+                    <td className="px-5 py-3 text-right font-medium">
+                      ${(scopedTotals[p.id]?.total ?? 0).toFixed(2)}
+                    </td>
                     <td className="px-5 py-3 text-center">
                       <button
                         onClick={() => deleteProject(p.id)}
@@ -544,6 +557,20 @@ export default function Home() {
                 Lifetime
               </button>
             </div>
+
+            {/* Expanded ranges — functional now, pretty later */}
+            <select
+              value={scope}
+              onChange={(e) => setScope(e.target.value as ViewScope)}
+              className="ml-2 rounded-md bg-white/10 border border-white/10 px-2 py-1 text-slate-100"
+              title="Select time range"
+            >
+              {SCOPE_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
           </div>
 
           <div className="flex gap-3">
@@ -551,13 +578,13 @@ export default function Home() {
               onClick={() => downloadFilteredCSV(scope)}
               className="rounded-lg px-4 py-2 bg-emerald-600 hover:bg-emerald-500 transition"
             >
-              Export CSV — {scope === "month" ? "This Month" : "Lifetime"}
+              Export CSV — {labelForScope(scope)}
             </button>
             <button
               onClick={() => downloadFilteredJSON(scope)}
               className="rounded-lg px-4 py-2 bg-emerald-600 hover:bg-emerald-500 transition"
             >
-              Export JSON — {scope === "month" ? "This Month" : "Lifetime"}
+              Export JSON — {labelForScope(scope)}
             </button>
             <button
               onClick={exportData}
