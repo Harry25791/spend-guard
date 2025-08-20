@@ -155,3 +155,146 @@ export function importAll(
 
   return { projects: mergedProjects.length, entries: entryCount, warnings };
 }
+
+
+// ===== Phase 1.75.x additions: scope persistence, filtered exports =====
+export type ViewScope = "month" | "lifetime";
+
+function safeParse<T>(txt: string | null): T | null {
+  if (!txt) return null;
+  try { return JSON.parse(txt) as T; } catch { return null; }
+}
+
+/** Persisted scope in localStorage.settings.viewScope (default "month") */
+export function getViewScope(): ViewScope {
+  if (typeof window === "undefined") return "month";
+  const settings = safeParse<{ alertsEnabled?: boolean; monthlyLimitUsd?: number; viewScope?: ViewScope }>(localStorage.getItem("settings"));
+  return (settings?.viewScope === "lifetime" || settings?.viewScope === "month") ? settings!.viewScope : "month";
+}
+
+export function setViewScope(scope: ViewScope) {
+  if (typeof window === "undefined") return;
+  const settings = safeParse<{ alertsEnabled?: boolean; monthlyLimitUsd?: number; viewScope?: ViewScope }>(localStorage.getItem("settings")) || {};
+  const next = { ...settings, viewScope: scope };
+  localStorage.setItem("settings", JSON.stringify(next));
+}
+
+type CsvScope = ViewScope;
+
+function toCsvRow(fields: (string | number | null | undefined)[]): string {
+  const esc = (v: any) => {
+    if (v === null || v === undefined) return "";
+    const s = String(v);
+    if (/[",\n]/.test(s)) return "\"" + s.replace(/"/g, '""') + "\"";
+    return s;
+  };
+  return fields.map(esc).join(",");
+}
+
+function entriesToCsv(projects: any[], entriesByProject: Record<string, any[]>): string {
+  const header = [
+    "project_id","project_name","project_provider","project_rateUsdPer1k",
+    "entry_id","date","provider","model","rateUsdPer1k","tokens","cost"
+  ];
+  const rows: string[] = [header.join(",")];
+  for (const p of projects) {
+    const rowsForP = entriesByProject[p.id] ?? [];
+    for (const e of rowsForP) {
+      rows.push(toCsvRow([
+        p.id, p.name, p.provider, (p.rateUsdPer1k ?? ""),
+        e.id, e.date, (e.provider ?? ""), (e.model ?? ""), (e.rateUsdPer1k ?? ""), e.tokens, e.cost
+      ]));
+    }
+  }
+  return rows.join("\n");
+}
+
+/** Build filtered view (month or lifetime) across all projects. */
+export function getFilteredEntriesForAll(scope: CsvScope): { projects: any[]; entries: Record<string, any[]> } {
+  const projects = loadProjects();
+  const now = new Date();
+  const yyyy = now.getUTCFullYear();
+  const mm = String(now.getUTCMonth() + 1).padStart(2, "0");
+  const monthPrefix = `${yyyy}-${mm}`; // "YYYY-MM"
+
+  const out: Record<string, any[]> = {};
+  for (const p of projects) {
+    const raw = loadEntries(p.id, p.provider);
+    const filtered = scope === "month"
+      ? (raw ?? []).filter((e: any) => (e.date || "").startsWith(monthPrefix))
+      : (raw ?? []);
+    out[p.id] = filtered;
+  }
+  return { projects, entries: out };
+}
+
+export function downloadFilteredCSV(scope: CsvScope, filename?: string) {
+  const { projects, entries } = getFilteredEntriesForAll(scope);
+  const csv = entriesToCsv(projects, entries);
+  const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+  const name = filename || `spendguard-${scope}-export-${stamp}.csv`;
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+/** Project-scoped CSV export with provided entries array (already filtered by UI). */
+export function downloadProjectCSV(projectId: string, projectName: string, projectProvider: string, projectRateUsdPer1k: number | undefined, entries: any[], filename?: string) {
+  const csv = entriesToCsv(
+    [ { id: projectId, name: projectName, provider: projectProvider, rateUsdPer1k: projectRateUsdPer1k } ] as any[],
+    { [projectId]: entries } as Record<string, any[]>
+  );
+  const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+  const safeName = (projectName || "project").replace(/[^a-z0-9-_ ]/gi, "_").slice(0, 40);
+  const name = filename || `spendguard-${safeName}-${stamp}.csv`;
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+export function downloadFilteredJSON(scope: CsvScope, filename?: string) {
+  const data = getFilteredEntriesForAll(scope);
+  const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+  const name = filename || `spendguard-${scope}-export-${stamp}.json`;
+  const blob = new Blob([JSON.stringify(data)], { type: "application/json;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+export function downloadProjectJSON(projectId: string, projectName: string, projectProvider: string, projectRateUsdPer1k: number | undefined, entries: any[], filename?: string) {
+  const payload = {
+    project: { id: projectId, name: projectName, provider: projectProvider, rateUsdPer1k: projectRateUsdPer1k },
+    entries
+  };
+  const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+  const safeName = (projectName || "project").replace(/[^a-z0-9-_ ]/gi, "_").slice(0, 40);
+  const name = filename || `spendguard-${safeName}-${stamp}.json`;
+  const blob = new Blob([JSON.stringify(payload)], { type: "application/json;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
