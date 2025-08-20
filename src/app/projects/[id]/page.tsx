@@ -4,8 +4,8 @@ import { useState, useEffect, useRef } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import Link from "next/link";
 
-import AppShell from "@/components/layout/AppShell";
 import Aurora from "@/components/ui/Aurora";
+import RangePicker from "@/components/ui/RangePicker";
 
 import { loadEntries, saveEntries, type EntryV2 } from "@/lib/storage";
 import {
@@ -16,7 +16,6 @@ import {
   type ViewScope,
   filterByScope,
   labelForScope,
-  SCOPE_OPTIONS,
 } from "@/lib/io";
 
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from "recharts";
@@ -290,8 +289,17 @@ export default function ProjectDetail() {
 
   // ── Render
   return (
-    <AppShell>
-      <Aurora />
+    <main className="relative min-h-screen w-full bg-ink-900 text-slate-100">
+      <Aurora className="pointer-events-none absolute inset-0 opacity-60" />
+
+      <header className="sticky top-0 z-10 backdrop-blur supports-[backdrop-filter]:bg-white/0">
+        <div className="mx-auto max-w-5xl px-6 py-5 flex items-center justify-between">
+          <h1 className="text-xl md:text-2xl font-semibold tracking-tight">
+            <span className="mr-2">🛡️</span>Spend Guard
+          </h1>
+          <span className="text-xs md:text-sm text-slate-400">v0.2</span>
+        </div>
+      </header>
 
       <div className="mx-auto max-w-5xl px-6 py-6">
         <div className="mb-4">
@@ -305,34 +313,7 @@ export default function ProjectDetail() {
 
         {/* Scope controls + exports */}
         <div className="flex flex-wrap items-center gap-3 mb-4">
-          <div className="inline-flex rounded-lg border border-white/10 overflow-hidden">
-            <button
-              onClick={() => setScope("month")}
-              className={scope === "month" ? "px-3 py-1.5 text-sm bg-white/10 text-white" : "px-3 py-1.5 text-sm text-slate-300 hover:bg-white/5"}
-            >
-              This Month
-            </button>
-            <button
-              onClick={() => setScope("lifetime")}
-              className={scope === "lifetime" ? "px-3 py-1.5 text-sm bg-white/10 text-white" : "px-3 py-1.5 text-sm text-slate-300 hover:bg-white/5"}
-            >
-              Lifetime
-            </button>
-          </div>
-
-          {/* Quick functional range selector (UI polish later) */}
-          <label className="text-sm text-slate-300 ml-1">
-            Range:&nbsp;
-            <select
-              value={scope}
-              onChange={(e) => setScope(e.target.value as ViewScope)}
-              className="rounded-md bg-white/10 border border-white/10 px-2 py-1 text-slate-100"
-            >
-              {SCOPE_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
-              ))}
-            </select>
-          </label>
+          <RangePicker value={scope} onChange={setScope} className="ml-1" />
 
           <button
             onClick={() => downloadProjectCSV(String(projectId), name, provider, projectRate, viewEntries)}
@@ -520,7 +501,6 @@ export default function ProjectDetail() {
 
             {/* Model */}
             <div className="relative flex-1">
-              {/* Key forces a remount when provider becomes available */}
               <select
                 key={activeProviderKey || (customRate !== undefined ? "custom" : "none")}
                 value={selectedModel}
@@ -798,6 +778,6 @@ export default function ProjectDetail() {
           </div>
         )}
       </div>
-    </AppShell>
+    </main>
   );
 }

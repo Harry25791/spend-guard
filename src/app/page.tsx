@@ -3,8 +3,8 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import Link from "next/link";
 
-import AppShell from "@/components/layout/AppShell";
 import Aurora from "@/components/ui/Aurora";
+import RangePicker from "@/components/ui/RangePicker";
 
 // Types
 import type { Project as ProjectType } from "@/lib/storage";
@@ -21,7 +21,6 @@ import {
   type ViewScope,
   labelForScope,
   filterByScope,
-  SCOPE_OPTIONS,
 } from "@/lib/io";
 
 // Optional provider utils (kept for future use)
@@ -110,6 +109,7 @@ export default function Home() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
+    // Merge-only write so other keys (e.g., viewScope) remain intact
     const prev = localStorage.getItem("settings");
     let merged: any = {};
     try {
@@ -229,7 +229,7 @@ export default function Home() {
   const [modelExpanded, setModelExpanded] = useState(false);
   useEffect(() => setModelExpanded(false), [scope]); // reset on scope change
 
-  // Timeline: day for all non-lifetime scopes; month for lifetime
+  // Timeline: day for non-lifetime; month for lifetime
   const timeline = useMemo(() => {
     const flat: Array<{ date: string; cost: number; tokens?: number }> = [];
     for (const p of filteredAll.projects) {
@@ -241,7 +241,7 @@ export default function Home() {
     return groupEntriesByPeriod(flat, period);
   }, [filteredAll, scope]);
 
-  // Per-project totals for the CURRENT scope (drives the table)
+  // Per-project totals for CURRENT scope (drives the table)
   const scopedTotals = useMemo(() => {
     const map: Record<string, { total: number; lastDate: string | null }> = {};
     for (const p of projects) {
@@ -325,8 +325,9 @@ export default function Home() {
     scope === "lifetime" ? "Totals — By Month (Lifetime)" : `Totals — By Day (${labelForScope(scope)})`;
 
   return (
-    <AppShell>
-      <Aurora />
+    <main className="relative min-h-screen w-full bg-ink-900 text-slate-100">
+      {/* Aurora/gradient backdrop */}
+      <Aurora className="pointer-events-none absolute inset-0 opacity-60" />
 
       <header className="sticky top-0 z-10 backdrop-blur supports-[backdrop-filter]:bg-white/0">
         <div className="mx-auto max-w-5xl px-6 py-5 flex items-center justify-between">
@@ -375,7 +376,7 @@ export default function Home() {
 
       <section className="mx-auto max-w-5xl px-6 py-8">
         {/* Add Project Card */}
-        <div className="sg-card p-4 mb-6">
+        <div className="mb-6 rounded-2xl border border-white/10 bg-white/5 backdrop-blur-sm shadow-lg shadow-cyan-900/20 p-4">
           <form onSubmit={addProject} className="flex flex-col sm:flex-row gap-3">
             <input
               ref={nameRef}
@@ -397,13 +398,16 @@ export default function Home() {
 
         {/* Per-model breakdown (global, filtered) */}
         <ClientOnly>
-          <div className="sg-card p-4 mb-6">
+          <div className="mb-6 rounded-2xl border border-white/10 bg-white/5 backdrop-blur-sm shadow-lg shadow-cyan-900/20 p-4">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-semibold text-slate-200">
                 Per-model breakdown — {labelForScope(scope)}
               </h3>
-              <span className="text-xs text-slate-400">Top 8 by cost</span>
+
+              {/* Single, themed range dropdown (no extra chevron) */}
+              <RangePicker value={scope} onChange={setScope} className="ml-1" />
             </div>
+
             <div className="h-56 w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={barData}>
@@ -415,6 +419,7 @@ export default function Home() {
                 </BarChart>
               </ResponsiveContainer>
             </div>
+
             <div className="mt-3 overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="text-slate-300">
@@ -460,7 +465,7 @@ export default function Home() {
 
         {/* Monthly/Daily totals line chart */}
         <ClientOnly>
-          <div className="sg-card p-4 mb-6">
+          <div className="mb-6 rounded-2xl border border-white/10 bg-white/5 backdrop-blur-sm shadow-lg shadow-cyan-900/20 p-4">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-semibold text-slate-200">{timelineTitle}</h3>
             </div>
@@ -479,7 +484,7 @@ export default function Home() {
         </ClientOnly>
 
         {/* Projects Table Card (mirrors selected scope) */}
-        <div className="sg-card overflow-hidden">
+        <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-sm shadow-lg shadow-cyan-900/20 overflow-hidden">
           <table className="w-full">
             <thead className="bg-white/5">
               <tr className="text-left text-slate-300 text-sm">
@@ -538,38 +543,10 @@ export default function Home() {
           </table>
         </div>
 
-        {/* Controls: scope, filtered exports, full backup, import, clear */}
+        {/* Controls: filtered exports, full backup, import, clear */}
         <div className="flex flex-wrap items-center gap-3 justify-between pt-4">
           <div className="flex items-center gap-2">
-            <span className="text-sm text-slate-300">View:</span>
-            <div className="inline-flex rounded-lg border border-white/10 overflow-hidden">
-              <button
-                onClick={() => setScope("month")}
-                className={scope === "month" ? "px-3 py-1.5 text-sm bg-white/10 text-white" : "px-3 py-1.5 text-sm text-slate-300 hover:bg-white/5"}
-              >
-                This Month
-              </button>
-              <button
-                onClick={() => setScope("lifetime")}
-                className={scope === "lifetime" ? "px-3 py-1.5 text-sm bg-white/10 text-white" : "px-3 py-1.5 text-sm text-slate-300 hover:bg-white/5"}
-              >
-                Lifetime
-              </button>
-            </div>
-
-            {/* Expanded ranges — functional now, pretty later */}
-            <select
-              value={scope}
-              onChange={(e) => setScope(e.target.value as ViewScope)}
-              className="ml-2 rounded-md bg-white/10 border border-white/10 px-2 py-1 text-slate-100"
-              title="Select time range"
-            >
-              {SCOPE_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
+            <RangePicker value={scope} onChange={setScope} className="ml-1" />
           </div>
 
           <div className="flex gap-3">
@@ -662,6 +639,6 @@ export default function Home() {
           </div>
         )}
       </section>
-    </AppShell>
+    </main>
   );
 }
