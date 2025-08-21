@@ -1,12 +1,16 @@
+// src/app/projects/[id]/page.tsx
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import Link from "next/link";
 
-import Aurora from "@/components/ui/Aurora";
-import RangePicker from "@/components/ui/RangePicker";
+// UI
+import SGCard from "@/components/ui/SGCard";
+import PieByModel from "@/components/charts/PieByModel";
+import MiniLine from "@/components/charts/MiniLine";
 
+// Data
 import { loadEntries, saveEntries, type EntryV2 } from "@/lib/storage";
 import {
   downloadProjectCSV,
@@ -16,11 +20,11 @@ import {
   type ViewScope,
   filterByScope,
   labelForScope,
+  rangeForScope,
 } from "@/lib/io";
-
-import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import { PROVIDER_MODELS, normalizeProvider, getModelRate, type ProviderKey } from "@/lib/rates";
 import { estimateTokens } from "@/lib/token";
+import KPIRow from "@/components/dashboard/KPIRow";
 
 type UsageEntry = EntryV2;
 
@@ -276,167 +280,92 @@ export default function ProjectDetail() {
   const deleteEntry = (id: string) => setEntries(entries.filter((e) => e.id !== id));
   const clearAllEntries = () => { if (window.confirm("Are you sure you want to clear all entries?")) setEntries([]); };
 
-  // ── View scope (hydration-safe: "month" on first render)
-  const [scope, setScope] = useState<ViewScope>("month");
-  useEffect(() => { try { setScope(getViewScope()); } catch {} }, []);
-  useEffect(() => { setViewScope(scope); }, [scope]);
+  // ── View scope: use global header control (listen for event); hydrate initial
+  const [scope, setScopeState] = useState<ViewScope>("month");
+  useEffect(() => { try { setScopeState(getViewScope()); } catch {} }, []);
+  useEffect(() => {
+    const onScope = (e: any) => {
+      const v = e?.detail?.scope as ViewScope | undefined;
+      if (v) setScopeState(v);
+    };
+    window.addEventListener("sg:scope-change", onScope as EventListener);
+    return () => window.removeEventListener("sg:scope-change", onScope as EventListener);
+  }, []);
+  // (rare) local override helper if you ever add a local control
+  const setScope = useCallback((v: ViewScope) => {
+    setScopeState(v);
+    setViewScope(v);
+    window.dispatchEvent(new CustomEvent("sg:scope-change", { detail: { scope: v } }));
+  }, []);
 
   // ── Derived filtered entries (all ranges supported)
-  const viewEntries = entries.filter((e) => filterByScope(e?.date || "", scope));
+  const viewEntries = useMemo(
+    () => entries.filter((e) => filterByScope(e?.date || "", scope)),
+    [entries, scope]
+  );
+
+  // ── Timeline support (from/to for gap-filling mini line)
+  const { from, to } = useMemo(() => rangeForScope(scope, new Date()), [scope]);
 
   // ── Totals
-  const totalCost = viewEntries.reduce((sum, e) => sum + e.cost, 0);
+  const totalCost = useMemo(
+    () => Number(viewEntries.reduce((sum, e) => sum + (Number(e.cost) || 0), 0).toFixed(6)),
+    [viewEntries]
+  );
+
+    // KPI helpers
+  const entriesCount = viewEntries.length;
+
+  const avgCost = useMemo(() => {
+    if (entriesCount === 0) return 0;
+    return Number((totalCost / entriesCount).toFixed(6));
+  }, [totalCost, entriesCount]);
+
+  const totalTokens = useMemo(
+    () => viewEntries.reduce((sum, e) => sum + (Number(e.tokens) || 0), 0),
+    [viewEntries]
+  );
+
+  const avgTokens = useMemo(() => {
+    if (entriesCount === 0) return 0;
+    return Math.round(totalTokens / entriesCount);
+  }, [totalTokens, entriesCount]);
+
+  const lastEntryDate = useMemo(() => {
+    if (viewEntries.length === 0) return undefined;
+    return viewEntries
+      .map((e) => e.date)
+      .reduce((a, b) => (a > b ? a : b));
+  }, [viewEntries]);
 
   // ── Render
   return (
-    <main className="relative min-h-screen w-full bg-ink-900 text-slate-100">
-      <Aurora className="pointer-events-none absolute inset-0 opacity-60" />
+    <div className="space-y-6">
+      <div>
+        <Link href="/" className="text-cyan-300 hover:text-cyan-200 underline decoration-cyan-500/40">
+          ← Back to Projects
+        </Link>
+        <h1 className="mt-2 text-2xl font-semibold tracking-tight">{name}</h1>
+        <p className="text-slate-400">{provider} — Usage Tracker</p>
+        <p className="text-slate-400 text-sm mt-1">Scope: <span className="text-slate-200">{labelForScope(scope)}</span> (set in header)</p>
+      </div>
 
-      <header className="sticky top-0 z-10 backdrop-blur supports-[backdrop-filter]:bg-white/0">
-        <div className="mx-auto max-w-5xl px-6 py-5 flex items-center justify-between">
-          <h1 className="text-xl md:text-2xl font-semibold tracking-tight">
-            <span className="mr-2">🛡️</span>Spend Guard
-          </h1>
-          <span className="text-xs md:text-sm text-slate-400">v0.2</span>
-        </div>
-      </header>
+      {/* Project KPI Row */}
+      <KPIRow
+        className="mt-4"
+        items={[
+          { label: "Scope Total", value: `$${totalCost.toFixed(2)} • ${totalTokens.toLocaleString()} tok` },
+          { label: "Entries", value: String(entriesCount) },
+          { label: "Avg/Entry", value: `$${avgCost.toFixed(2)} • ${avgTokens} tok` },
+          { label: "Last Entry", value: lastEntryDate ?? "—" },
+        ]}
+      />
 
-      <div className="mx-auto max-w-5xl px-6 py-6">
-        <div className="mb-4">
-          <Link href="/" className="text-cyan-300 hover:text-cyan-200 underline decoration-cyan-500/40">
-            ← Back to Projects
-          </Link>
-        </div>
 
-        <h1 className="text-2xl font-semibold tracking-tight">{name}</h1>
-        <p className="text-slate-400 mb-6">{provider} — Usage Tracker</p>
-
-        {/* Scope controls + exports */}
-        <div className="flex flex-wrap items-center gap-3 mb-4">
-          <RangePicker value={scope} onChange={setScope} className="ml-1" />
-
-          <button
-            onClick={() => downloadProjectCSV(String(projectId), name, provider, projectRate, viewEntries)}
-            className="rounded-lg px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-sm"
-          >
-            Export CSV — {labelForScope(scope)}
-          </button>
-          <button
-            onClick={() => downloadProjectJSON(String(projectId), name, provider, projectRate, viewEntries)}
-            className="rounded-lg px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-sm"
-          >
-            Export JSON — {labelForScope(scope)}
-          </button>
-        </div>
-
-        {/* Per-model breakdown (project, filtered) */}
-        <div className="sg-card p-4 mb-6">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-semibold text-slate-200">
-              Per-model breakdown — {labelForScope(scope)}
-            </h3>
-            <span className="text-xs text-slate-400">by cost</span>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
-            <div className="h-56 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={(function () {
-                      const m: Record<string, { name: string; value: number; tokens: number }> = {};
-                      for (const e of viewEntries) {
-                        const prov = e.provider ?? "unknown";
-                        const model = e.model ?? "unknown";
-                        const key = prov + "/" + model;
-                        const v = m[key] || { name: key, value: 0, tokens: 0 };
-                        v.value += Number(e.cost) || 0;
-                        v.tokens += Number(e.tokens) || 0;
-                        m[key] = v;
-                      }
-                      return Object.values(m).map((r) => ({ name: r.name, value: Number(r.value.toFixed(2)) }));
-                    })()}
-                    dataKey="value"
-                    nameKey="name"
-                    cx="50%"
-                    cy="50%"
-                    outerRadius={80}
-                  >
-                    {((function () {
-                      const m: Record<string, { name: string; value: number }> = {};
-                      for (const e of viewEntries) {
-                        const prov = e.provider ?? "unknown";
-                        const model = e.model ?? "unknown";
-                        const key = prov + "/" + model;
-                        const v = m[key] || { name: key, value: 0 };
-                        v.value += Number(e.cost) || 0;
-                        m[key] = v;
-                      }
-                      return Object.values(m);
-                    })()).map((_, i) => <Cell key={`c-${i}`} />)}
-                  </Pie>
-                  <Tooltip />
-                  <Legend />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="text-slate-300">
-                  <tr>
-                    <th className="text-left py-2 pr-4">Provider/Model</th>
-                    <th className="text-right py-2 pr-4">Tokens</th>
-                    <th className="text-right py-2">Cost ($)</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(() => {
-                    const m: Record<string, { name: string; tokens: number; cost: number }> = {};
-                    for (const e of viewEntries) {
-                      const prov = e.provider ?? "unknown";
-                      const model = e.model ?? "unknown";
-                      const key = prov + "/" + model;
-                      const v = m[key] || { name: key, tokens: 0, cost: 0 };
-                      v.tokens += Number(e.tokens) || 0;
-                      v.cost += Number(e.cost) || 0;
-                      m[key] = v;
-                    }
-                    const rows = Object.values(m).sort((a, b) => b.cost - a.cost);
-                    if (rows.length === 0) {
-                      return (
-                        <tr>
-                          <td colSpan={3} className="py-4 text-center text-slate-400">
-                            {entries.length === 0 ? "No usage entries yet" : "No entries in this range"}
-                          </td>
-                        </tr>
-                      );
-                    }
-                    return rows.map((r, idx) => (
-                      <tr key={idx} className="border-t border-white/10">
-                        <td className="py-2 pr-4">{r.name}</td>
-                        <td className="py-2 pr-4 text-right">{r.tokens.toLocaleString()}</td>
-                        <td className="py-2 text-right">{r.cost.toFixed(2)}</td>
-                      </tr>
-                    ));
-                  })()}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-
-        <p className="text-slate-400 mb-2">
-          {customRate
-            ? <>Custom rate: <span className="text-cyan-300">${customRate.toFixed(4)}</span> per 1k tokens</>
-            : effectiveRate
-              ? <>Rate: <span className="text-cyan-300">${effectiveRate.toFixed(4)}</span> per 1k tokens</>
-              : projectRate !== undefined
-                ? <>Project default: <span className="text-cyan-300">${projectRate.toFixed(4)}</span> per 1k tokens</>
-                : <>Select a provider/model to compute cost</>}
-        </p>
-
-        {/* Add Entry Card */}
-        <div className="sg-card p-4 mb-6">
+      {/* Split layout: sticky Add Entry (left) + insights (right) */}
+      <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
+        {/* Add Entry Card (sticky) */}
+        <SGCard className="md:col-span-5 lg:col-span-4 p-4 md:sticky md:top-24 h-fit">
           <div className="mb-3 flex items-center gap-2 text-sm">
             <span className="text-slate-400">Entry mode:</span>
             <button
@@ -454,17 +383,18 @@ export default function ProjectDetail() {
               Manual Tokens
             </button>
           </div>
-          <form onSubmit={addEntry} className="flex flex-col sm:flex-row gap-3">
+
+          <form onSubmit={addEntry} className="flex flex-col gap-3">
             <input
               ref={dateRef}
               type="date"
               value={date}
               onChange={(e) => setDate(e.target.value)}
-              className="flex-1 rounded-lg bg-slate-800/60 border border-white/10 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-cyan-500/60"
+              className="rounded-lg bg-slate-800/60 border border-white/10 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-cyan-500/60"
             />
 
             {/* Provider */}
-            <div className="relative flex-1">
+            <div className="relative">
               <select
                 value={selectedProvider || (activeProviderKey || "")}
                 onChange={(e) => {
@@ -500,7 +430,7 @@ export default function ProjectDetail() {
             </div>
 
             {/* Model */}
-            <div className="relative flex-1">
+            <div className="relative">
               <select
                 key={activeProviderKey || (customRate !== undefined ? "custom" : "none")}
                 value={selectedModel}
@@ -522,14 +452,14 @@ export default function ProjectDetail() {
               </svg>
             </div>
 
-            {/* Tokens */}
+            {/* Tokens (manual mode) */}
             {manualTokens && (
               <input
                 type="number"
                 placeholder="Token Count"
                 value={tokens ? String(tokens) : ""}
                 onChange={(e) => setTokens(Number(e.target.value))}
-                className="flex-1 rounded-lg bg-slate-800/60 border border-white/10 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-cyan-500/60"
+                className="rounded-lg bg-slate-800/60 border border-white/10 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-cyan-500/60"
               />
             )}
 
@@ -541,243 +471,327 @@ export default function ProjectDetail() {
                 Add
               </button>
             )}
+
+            {/* Rate hint */}
+            <p className="text-xs text-slate-400 mt-1">
+              {customRate
+                ? `Custom rate: $${customRate}/1k tokens`
+                : effectiveRate
+                  ? `Rate: $${effectiveRate}/1k tokens`
+                  : projectRate !== undefined
+                    ? `Project default: $${projectRate}/1k tokens`
+                    : "Pick a provider/model to compute cost"}
+            </p>
+
+            {saved && <p className="text-emerald-400 text-sm mt-2">✅ Saved</p>}
           </form>
 
-          <p className="text-xs text-slate-400 mt-2">
-            {customRate
-              ? `Custom rate: $${customRate}/1k tokens`
-              : effectiveRate
-                ? `Rate: $${effectiveRate}/1k tokens`
-                : "Pick a provider and model to enable tokens → cost"}
-          </p>
-
-          {saved && <p className="text-emerald-400 text-sm mt-2">✅ Saved</p>}
-        </div>
-
-        {!manualTokens && (
-          <div className="sg-card p-4 mb-6">
-            <div className="mb-2 flex items-center justify-between">
-              <h3 className="text-sm font-medium text-slate-200">Token Counter</h3>
-              <span className="text-xs text-slate-400">
-                {effectiveRate ? `@ $${effectiveRate}/1k` : projectRate ? `@ project $${projectRate}/1k` : "select provider+model"}
-              </span>
-            </div>
-            <textarea
-              value={counterText}
-              onChange={(e) => setCounterText(e.target.value)}
-              placeholder="Paste prompt or output here to estimate tokens & cost..."
-              className="w-full min-h-[120px] rounded-lg bg-slate-800/60 border border-white/10 px-3 py-2 text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-500/60"
-            />
-            <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-              <div className="text-sm text-slate-300">
-                Tokens: <span className="font-medium">{counterTokens.toLocaleString()}</span>
-                <span className="mx-2">•</span>
-                Est. Cost: <span className="font-semibold text-cyan-300">${counterCost.toFixed(6)}</span>
+          {/* Token Counter */}
+          {!manualTokens && (
+            <div className="mt-4">
+              <div className="mb-2 flex items-center justify-between">
+                <h3 className="text-sm font-medium text-slate-200">Token Counter</h3>
+                <span className="text-xs text-slate-400">
+                  {effectiveRate ? `@ $${effectiveRate}/1k` : projectRate ? `@ project $${projectRate}/1k` : "select provider+model"}
+                </span>
               </div>
-              <button
-                onClick={addEntryFromCounter}
-                disabled={counterTokens <= 0 || !effectiveRate}
-                className="rounded-lg px-4 py-2 bg-cyan-500 hover:bg-cyan-400 disabled:opacity-50 disabled:cursor-not-allowed transition"
-              >
-                Add Entry from Text
+              <textarea
+                value={counterText}
+                onChange={(e) => setCounterText(e.target.value)}
+                placeholder="Paste prompt or output to estimate tokens & cost..."
+                className="w-full min-h-[120px] rounded-lg bg-slate-800/60 border border-white/10 px-3 py-2 text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-500/60"
+              />
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+                <div className="text-sm text-slate-300">
+                  Tokens: <span className="font-medium">{counterTokens.toLocaleString()}</span>
+                  <span className="mx-2">•</span>
+                  Est. Cost: <span className="font-semibold text-cyan-300">${counterCost.toFixed(6)}</span>
+                </div>
+                <button
+                  onClick={addEntryFromCounter}
+                  disabled={counterTokens <= 0 || !effectiveRate}
+                  className="rounded-lg px-4 py-2 bg-cyan-500 hover:bg-cyan-400 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                >
+                  Add Entry from Text
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Exports */}
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button
+              onClick={() => downloadProjectCSV(String(projectId), name, provider, projectRate, viewEntries)}
+              className="rounded-lg px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-sm"
+            >
+              Export CSV — {labelForScope(scope)}
+            </button>
+            <button
+              onClick={() => downloadProjectJSON(String(projectId), name, provider, projectRate, viewEntries)}
+              className="rounded-lg px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-sm"
+            >
+              Export JSON — {labelForScope(scope)}
+            </button>
+          </div>
+        </SGCard>
+
+        {/* Insights pane */}
+        <div className="md:col-span-7 lg:col-span-8 space-y-4">
+          <SGCard className="p-4">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-semibold text-slate-200">
+                Per‑model breakdown — {labelForScope(scope)}
+              </h3>
+              <span className="text-xs text-slate-400">by cost</span>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
+              <PieByModel entries={viewEntries} />
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="text-slate-300">
+                    <tr>
+                      <th className="text-left py-2 pr-4">Provider/Model</th>
+                      <th className="text-right py-2 pr-4">Tokens</th>
+                      <th className="text-right py-2">Cost ($)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(() => {
+                      const m: Record<string, { name: string; tokens: number; cost: number }> = {};
+                      for (const e of viewEntries) {
+                        const prov = e.provider ?? "unknown";
+                        const model = e.model ?? "unknown";
+                        const key = prov + "/" + model;
+                        const v = m[key] || { name: key, tokens: 0, cost: 0 };
+                        v.tokens += Number(e.tokens) || 0;
+                        v.cost += Number(e.cost) || 0;
+                        m[key] = v;
+                      }
+                      const rows = Object.values(m).sort((a, b) => b.cost - a.cost);
+                      if (rows.length === 0) {
+                        return (
+                          <tr>
+                            <td colSpan={3} className="py-4 text-center text-slate-400">
+                              {entries.length === 0 ? "No usage entries yet" : "No entries in this range"}
+                            </td>
+                          </tr>
+                        );
+                      }
+                      return rows.map((r, idx) => (
+                        <tr key={idx} className="border-t border-white/10">
+                          <td className="py-2 pr-4">{r.name}</td>
+                          <td className="py-2 pr-4 text-right">{r.tokens.toLocaleString()}</td>
+                          <td className="py-2 text-right">{r.cost.toFixed(2)}</td>
+                        </tr>
+                      ));
+                    })()}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </SGCard>
+
+          <SGCard className="p-4">
+            <h3 className="text-sm font-semibold text-slate-200 mb-2">
+              Timeline — {labelForScope(scope)}
+            </h3>
+            <MiniLine entries={viewEntries} from={from} to={to} valueKey="cost" />
+          </SGCard>
+        </div>
+      </div>
+
+      {/* Table (mirrors scope) */}
+      <SGCard className="overflow-hidden">
+        <table className="w-full">
+          <thead className="bg-white/5">
+            <tr className="text-left text-slate-300 text-sm">
+              <th className="px-5 py-3">Date</th>
+              <th className="px-5 py-3">Provider</th>
+              <th className="px-5 py-3">Model</th>
+              <th className="px-5 py-3 text-right">Tokens</th>
+              <th className="px-5 py-3 text-right">Rate ($/1k)</th>
+              <th className="px-5 py-3 text-right">Cost ($)</th>
+              <th className="px-5 py-3 text-center">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {!hydrated ? (
+              <tr>
+                <td colSpan={7} className="px-5 py-8 text-center text-slate-400">Loading…</td>
+              </tr>
+            ) : entries.length === 0 ? (
+              <tr>
+                <td colSpan={7} className="px-5 py-8 text-center text-slate-400">No usage entries yet</td>
+              </tr>
+            ) : viewEntries.length === 0 ? (
+              <tr>
+                <td colSpan={7} className="px-5 py-8 text-center text-slate-400">No entries in this range</td>
+              </tr>
+            ) : (
+              viewEntries.map((e, i) => (
+                <tr
+                  key={e.id}
+                  className={`border-t border-white/10 ${i % 2 === 0 ? "bg-white/[0.02]" : ""} hover:bg-white/[0.06] transition`}
+                >
+                  <td className="px-5 py-3">{e.date}</td>
+                  <td className="px-5 py-3">{e.provider ?? "—"}</td>
+                  <td className="px-5 py-3">{e.model ?? "—"}</td>
+                  <td className="px-5 py-3 text-right">{e.tokens.toLocaleString()}</td>
+                  <td className="px-5 py-3 text-right">
+                    {typeof e.rateUsdPer1k === "number" ? e.rateUsdPer1k : (projectRate ?? "—")}
+                  </td>
+                  <td className="px-5 py-3 text-right">${e.cost.toFixed(6)}</td>
+                  <td className="px-5 py-3 text-center space-x-2">
+                    <button
+                      onClick={() => startEdit(e)}
+                      className="rounded-md px-3 py-1.5 bg-cyan-600 hover:bg-cyan-500"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => deleteEntry(e.id as string)}
+                      className="rounded-md px-3 py-1.5 bg-rose-500 hover:bg-rose-400"
+                    >
+                      Delete
+                    </button>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </SGCard>
+
+      {entries.length > 0 && (
+        <div className="flex justify-end pt-4">
+          <button
+            onClick={clearAllEntries}
+            className="rounded-lg px-4 py-2 bg-rose-600 hover:bg-rose-500 transition"
+          >
+            Clear All Entries
+          </button>
+        </div>
+      )}
+
+      <p className="mt-2 text-lg font-semibold">
+        Total Cost — {labelForScope(scope)}: ${totalCost.toFixed(6)}
+      </p>
+
+      {/* Edit Modal */}
+      {isEditOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/50" onClick={cancelEdit} />
+          <div className="relative z-10 w-full max-w-xl rounded-2xl border border-white/10 bg-[#0f172a] p-5 shadow-xl">
+            <h3 className="text-lg font-semibold mb-4">Edit Entry</h3>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm mb-1">Date</label>
+                <input
+                  type="date"
+                  value={draftDate}
+                  onChange={(e) => setDraftDate(e.target.value)}
+                  className="w-full rounded-lg bg-slate-800/60 border border-white/10 px-3 py-2"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm mb-1">Tokens</label>
+                <input
+                  type="number"
+                  value={draftTokens ? String(draftTokens) : ""}
+                  onChange={(e) => setDraftTokens(Number(e.target.value))}
+                  className="w-full rounded-lg bg-slate-800/60 border border-white/10 px-3 py-2"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm mb-1">Provider</label>
+                <div className="relative">
+                  <select
+                    value={draftProvider || (activeDraftProviderKey || "")}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      if (v === "other") {
+                        const prov = window.prompt("Provider name?");
+                        const model = window.prompt("Model name?");
+                        const rateStr = window.prompt("Rate in $ per 1k tokens?");
+                        const rateNum = rateStr ? Number(rateStr) : undefined;
+                        if (!prov || !model || !rateNum || rateNum <= 0 || Number.isNaN(rateNum)) {
+                          alert("Invalid custom provider/model/rate. Please try again.");
+                          return;
+                        }
+                        setDraftProvider(prov.trim());
+                        setDraftModel(model.trim());
+                        setDraftCustomRate(rateNum);
+                      } else {
+                        setDraftProvider(v);
+                        setDraftModel("");
+                        setDraftCustomRate(undefined);
+                      }
+                    }}
+                    className="w-full appearance-none rounded-lg bg-slate-800/60 border border-white/10 text-slate-100 px-3 py-2 pr-8 focus:outline-none focus:ring-2 focus:ring-cyan-500/60"
+                  >
+                    {draftProvider &&
+                      !["openai","anthropic","mistral","google","deepseek"].includes((normalizeProvider(draftProvider)||"")) && (
+                        <option value={draftProvider}>{draftProvider}</option>
+                      )}
+                    {["openai","anthropic","mistral","google","deepseek","other"].map(p => (
+                      <option key={p} value={p}>{p === "other" ? "Other…" : p}</option>
+                    ))}
+                  </select>
+                  <svg className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-300"
+                       viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                    <path d="M5.23 7.21a.75.75 0 011.06.02L10 11.17l3.71-3.94a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01-1.06z"/>
+                  </svg>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm mb-1">Model</label>
+                <div className="relative">
+                  <select
+                    key={activeDraftProviderKey || (draftCustomRate !== undefined ? "custom" : "none")}
+                    value={draftModel}
+                    onChange={(e) => setDraftModel(e.target.value)}
+                    disabled={!activeDraftProviderKey && draftCustomRate === undefined}
+                    className={`w-full appearance-none rounded-lg bg-slate-800/60 border border-white/10 text-slate-100 px-3 py-2 pr-8 focus:outline-none focus:ring-2 focus:ring-cyan-500/60 disabled:bg-slate-700/40 disabled:text-slate-400 ${
+                      !activeDraftProviderKey && draftCustomRate === undefined ? "cursor-not-allowed" : "cursor-pointer"
+                    }`}
+                  >
+                    <option value="">{activeDraftProviderKey ? "Select model" : "Choose a provider first"}</option>
+                    {activeDraftProviderKey &&
+                      draftModelOptions.map(m => (
+                        <option key={m.model} value={m.model}>{m.model}</option>
+                      ))}
+                  </select>
+                  <svg className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-300"
+                       viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                    <path d="M5.23 7.21a.75.75 0 011.06.02L10 11.17l3.71-3.94a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01-1.06z"/>
+                  </svg>
+                </div>
+              </div>
+
+              <div className="md:col-span-2 text-xs text-slate-400">
+                {draftCustomRate
+                  ? <>Custom rate: <span className="text-cyan-300">${draftCustomRate}</span> / 1k</>
+                  : draftEffectiveRate
+                    ? <>Rate: <span className="text-cyan-300">${draftEffectiveRate}</span> / 1k</>
+                    : <>Select provider & model to compute cost</>}
+              </div>
+            </div>
+
+            <div className="mt-5 flex items-center justify-end gap-2">
+              <button onClick={cancelEdit} className="rounded-md px-3 py-1.5 bg-slate-600 hover:bg-slate-500">
+                Cancel
+              </button>
+              <button onClick={saveEdit} className="rounded-md px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500">
+                Save
               </button>
             </div>
           </div>
-        )}
-
-        {/* Table (mirrors scope) */}
-        <div className="sg-card overflow-hidden">
-          <table className="w-full">
-            <thead className="bg-white/5">
-              <tr className="text-left text-slate-300 text-sm">
-                <th className="px-5 py-3">Date</th>
-                <th className="px-5 py-3">Provider</th>
-                <th className="px-5 py-3">Model</th>
-                <th className="px-5 py-3 text-right">Tokens</th>
-                <th className="px-5 py-3 text-right">Rate ($/1k)</th>
-                <th className="px-5 py-3 text-right">Cost ($)</th>
-                <th className="px-5 py-3 text-center">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {!hydrated ? (
-                <tr>
-                  <td colSpan={7} className="px-5 py-8 text-center text-slate-400">Loading…</td>
-                </tr>
-              ) : entries.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="px-5 py-8 text-center text-slate-400">No usage entries yet</td>
-                </tr>
-              ) : viewEntries.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="px-5 py-8 text-center text-slate-400">No entries in this range</td>
-                </tr>
-              ) : (
-                viewEntries.map((e, i) => (
-                  <tr
-                    key={e.id}
-                    className={`border-t border-white/10 ${i % 2 === 0 ? "bg-white/[0.02]" : ""} hover:bg-white/[0.06] transition`}
-                  >
-                    <td className="px-5 py-3">{e.date}</td>
-                    <td className="px-5 py-3">{e.provider ?? "—"}</td>
-                    <td className="px-5 py-3">{e.model ?? "—"}</td>
-                    <td className="px-5 py-3 text-right">{e.tokens.toLocaleString()}</td>
-                    <td className="px-5 py-3 text-right">
-                      {typeof e.rateUsdPer1k === "number" ? e.rateUsdPer1k : (projectRate ?? "—")}
-                    </td>
-                    <td className="px-5 py-3 text-right">${e.cost.toFixed(6)}</td>
-                    <td className="px-5 py-3 text-center space-x-2">
-                      <button
-                        onClick={() => startEdit(e)}
-                        className="rounded-md px-3 py-1.5 bg-cyan-600 hover:bg-cyan-500"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        onClick={() => deleteEntry(e.id as string)}
-                        className="rounded-md px-3 py-1.5 bg-rose-500 hover:bg-rose-400"
-                      >
-                        Delete
-                      </button>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
         </div>
-
-        {entries.length > 0 && (
-          <div className="flex justify-end pt-4">
-            <button
-              onClick={clearAllEntries}
-              className="rounded-lg px-4 py-2 bg-rose-600 hover:bg-rose-500 transition"
-            >
-              Clear All Entries
-            </button>
-          </div>
-        )}
-
-        <p className="mt-4 text-lg font-semibold">
-          Total Cost — {labelForScope(scope)}: ${totalCost.toFixed(6)}
-        </p>
-
-        {/* Edit Modal */}
-        {isEditOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center">
-            <div className="absolute inset-0 bg-black/50" onClick={cancelEdit} />
-            <div className="relative z-10 w-full max-w-xl rounded-2xl border border-white/10 bg-[#0f172a] p-5 shadow-xl">
-              <h3 className="text-lg font-semibold mb-4">Edit Entry</h3>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-sm mb-1">Date</label>
-                  <input
-                    type="date"
-                    value={draftDate}
-                    onChange={(e) => setDraftDate(e.target.value)}
-                    className="w-full rounded-lg bg-slate-800/60 border border-white/10 px-3 py-2"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm mb-1">Tokens</label>
-                  <input
-                    type="number"
-                    value={draftTokens ? String(draftTokens) : ""}
-                    onChange={(e) => setDraftTokens(Number(e.target.value))}
-                    className="w-full rounded-lg bg-slate-800/60 border border-white/10 px-3 py-2"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm mb-1">Provider</label>
-                  <div className="relative">
-                    <select
-                      value={draftProvider || (activeDraftProviderKey || "")}
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        if (v === "other") {
-                          const prov = window.prompt("Provider name?");
-                          const model = window.prompt("Model name?");
-                          const rateStr = window.prompt("Rate in $ per 1k tokens?");
-                          const rateNum = rateStr ? Number(rateStr) : undefined;
-                          if (!prov || !model || !rateNum || rateNum <= 0 || Number.isNaN(rateNum)) {
-                            alert("Invalid custom provider/model/rate. Please try again.");
-                            return;
-                          }
-                          setDraftProvider(prov.trim());
-                          setDraftModel(model.trim());
-                          setDraftCustomRate(rateNum);
-                        } else {
-                          setDraftProvider(v);
-                          setDraftModel("");
-                          setDraftCustomRate(undefined);
-                        }
-                      }}
-                      className="w-full appearance-none rounded-lg bg-slate-800/60 border border-white/10 text-slate-100 px-3 py-2 pr-8 focus:outline-none focus:ring-2 focus:ring-cyan-500/60"
-                    >
-                      {draftProvider &&
-                        !["openai","anthropic","mistral","google","deepseek"].includes((normalizeProvider(draftProvider)||"")) && (
-                          <option value={draftProvider}>{draftProvider}</option>
-                        )}
-                      {["openai","anthropic","mistral","google","deepseek","other"].map(p => (
-                        <option key={p} value={p}>{p === "other" ? "Other…" : p}</option>
-                      ))}
-                    </select>
-                    <svg className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-300"
-                         viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                      <path d="M5.23 7.21a.75.75 0 011.06.02L10 11.17l3.71-3.94a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01-1.06z"/>
-                    </svg>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm mb-1">Model</label>
-                  <div className="relative">
-                    <select
-                      key={activeDraftProviderKey || (draftCustomRate !== undefined ? "custom" : "none")}
-                      value={draftModel}
-                      onChange={(e) => setDraftModel(e.target.value)}
-                      disabled={!activeDraftProviderKey && draftCustomRate === undefined}
-                      className={`w-full appearance-none rounded-lg bg-slate-800/60 border border-white/10 text-slate-100 px-3 py-2 pr-8 focus:outline-none focus:ring-2 focus:ring-cyan-500/60 disabled:bg-slate-700/40 disabled:text-slate-400 ${
-                        !activeDraftProviderKey && draftCustomRate === undefined ? "cursor-not-allowed" : "cursor-pointer"
-                      }`}
-                    >
-                      <option value="">{activeDraftProviderKey ? "Select model" : "Choose a provider first"}</option>
-                      {activeDraftProviderKey &&
-                        draftModelOptions.map(m => (
-                          <option key={m.model} value={m.model}>{m.model}</option>
-                        ))}
-                    </select>
-                    <svg className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-300"
-                         viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                      <path d="M5.23 7.21a.75.75 0 011.06.02L10 11.17l3.71-3.94a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01-1.06z"/>
-                    </svg>
-                  </div>
-                </div>
-
-                <div className="md:col-span-2 text-xs text-slate-400">
-                  {draftCustomRate
-                    ? <>Custom rate: <span className="text-cyan-300">${draftCustomRate}</span> / 1k</>
-                    : draftEffectiveRate
-                      ? <>Rate: <span className="text-cyan-300">${draftEffectiveRate}</span> / 1k</>
-                      : <>Select provider & model to compute cost</>}
-                </div>
-              </div>
-
-              <div className="mt-5 flex items-center justify-end gap-2">
-                <button onClick={cancelEdit} className="rounded-md px-3 py-1.5 bg-slate-600 hover:bg-slate-500">
-                  Cancel
-                </button>
-                <button onClick={saveEdit} className="rounded-md px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500">
-                  Save
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-    </main>
+      )}
+    </div>
   );
 }

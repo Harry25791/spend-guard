@@ -1,9 +1,12 @@
+// src/components/ui/SGCard.tsx
 "use client";
+
+import React from "react";
 import { cn } from "@/lib/cn";
 
 type Props = React.PropsWithChildren<{
   className?: string;
-  as?: keyof JSX.IntrinsicElements;
+  as?: React.ElementType;  // <= was: keyof JSX.IntrinsicElements
   ariaLabel?: string;
 }>;
 

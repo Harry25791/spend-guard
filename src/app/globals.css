@@ -1,7 +1,7 @@
 /* src/app/globals.css */
 @import "tailwindcss";
 
-/* theme tokens */
+/* Theme tokens */
 :root {
   --bg-1: #0b1023;
   --bg-2: #0e1330;
@@ -11,19 +11,60 @@
   --cyan: #22d3ee;
 }
 
-html, body { height: 100%; }
+html,
+body {
+  height: 100%;
+}
 
 body {
   background:
-    radial-gradient(1200px 800px at 70% -10%, rgba(139,92,246,.22), transparent 60%),
-    radial-gradient(900px 600px at -10% 30%, rgba(34,211,238,.16), transparent 55%),
+    radial-gradient(1200px 800px at 70% -10%, rgba(139, 92, 246, 0.22), transparent 60%),
+    radial-gradient(900px 600px at -10% 30%, rgba(34, 211, 238, 0.16), transparent 55%),
     linear-gradient(135deg, var(--bg-1), var(--bg-2) 40%, var(--bg-3));
   color: rgb(226 232 240);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
-/* custom utility as a Tailwind component layer */
+/* Custom utilities as Tailwind component layer */
 @layer components {
+  /* Glassy card */
   .sg-card {
-    @apply rounded-2xl border border-white/10 bg-white/5 backdrop-blur-md shadow-[0_10px_30px_rgba(2,6,23,.35)];
+    @apply relative rounded-2xl border border-white/10 bg-white/5 backdrop-blur-md shadow-[0_10px_30px_rgba(2,6,23,.35)];
+  }
+
+  /* Aurora gradient background layer */
+  .aurora-bg {
+    background: radial-gradient(ellipse at top left, rgba(139, 92, 246, 0.15), transparent 60%),
+      radial-gradient(ellipse at bottom right, rgba(34, 211, 238, 0.12), transparent 60%);
+  }
+
+  /* Subtle noise overlay */
+  .noise-overlay {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    opacity: 0.05;
+  }
+
+  /* Neon focus ring */
+  .focus-ring {
+    @apply focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60;
+  }
+
+  /* Glow border (for hover states, selected cards, etc.) */
+  .glow-ring {
+    box-shadow: 0 0 6px rgba(34, 211, 238, 0.4), 0 0 12px rgba(139, 92, 246, 0.3);
+  }
+
+  /* Skeleton shimmer */
+  .skeleton {
+    @apply animate-pulse rounded-md bg-white/10;
+    background-image: linear-gradient(
+      90deg,
+      transparent,
+      rgba(255, 255, 255, 0.07),
+      transparent
+    );
+    background-size: 200% 100%;
+    background-repeat: no-repeat;
   }
 }

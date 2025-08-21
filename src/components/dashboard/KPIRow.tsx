@@ -1,21 +1,28 @@
-import SGCard from "@/components/ui/SGCard";
+// src/components/dashboard/KPIRow.tsx
+import React from "react";
 
-type KPI = { label: string; value: string; sub?: string; warn?: boolean };
+export type KPI = { label: string; value: string; warn?: boolean };
 
-export default function KPIRow({ items }: { items: KPI[] }) {
+export default function KPIRow({
+  items,
+  className = "",
+}: {
+  items: KPI[];
+  className?: string;
+}) {
   return (
-    <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
-      {items.map((k) => (
-        <SGCard
-          key={k.label}
-          ariaLabel={k.label}
-          className={k.warn ? "ring-1 ring-red-500/30" : ""}
+    <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 ${className}`}>
+      {items.map((kpi, i) => (
+        <div
+          key={i}
+          className={`sg-card px-4 py-3 ${kpi.warn ? "ring-1 ring-rose-400/30" : ""}`}
         >
-          <div className="text-xs/4 text-white/60">{k.label}</div>
-          <div className="mt-1 text-2xl font-semibold tracking-tight">{k.value}</div>
-          {k.sub && <div className="mt-1 text-xs text-white/50">{k.sub}</div>}
-        </SGCard>
+          <div className="text-xs text-slate-400">{kpi.label}</div>
+          <div className={`mt-1 text-lg font-semibold ${kpi.warn ? "text-rose-200" : ""}`}>
+            {kpi.value}
+          </div>
+        </div>
       ))}
-    </section>
+    </div>
   );
 }

@@ -201,36 +201,82 @@ export function setViewScope(v: ViewScope) {
   localStorage.setItem("settings", JSON.stringify(s));
 }
 
-// Inclusive date filter for scopes (dates are ISO "YYYY-MM-DD")
+/* -------------------------------------------------------------------------- */
+/* Time helpers (local-day, inclusive of today)                               */
+/* -------------------------------------------------------------------------- */
+
+/** Parse an ISO "YYYY-MM-DD" into a local-midnight Date (no TZ surprises). */
+function parseLocalDateISO(dateISO: string): Date | null {
+  if (!dateISO) return null;
+  const parts = dateISO.split("-").map((n) => Number(n));
+  if (parts.length !== 3 || parts.some((n) => Number.isNaN(n))) return null;
+  // Local midnight for that calendar day:
+  return new Date(parts[0], parts[1] - 1, parts[2], 0, 0, 0, 0);
+}
+
+function startOfTodayLocal(now = new Date()): Date {
+  const d = new Date(now);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+function endOfTodayLocal(now = new Date()): Date {
+  const d = new Date(now);
+  d.setHours(23, 59, 59, 999);
+  return d;
+}
+
+/**
+ * For an inclusive "last N days" window that includes today as day 1:
+ * from = start of (today - (N - 1) days), to = end of today
+ */
+function lastNDaysInclusiveLocal(n: number, now = new Date()): { from: Date; to: Date } {
+  const to = endOfTodayLocal(now);
+  const from = startOfTodayLocal(now);
+  from.setDate(from.getDate() - (n - 1));
+  return { from, to };
+}
+
+function firstOfThisMonthLocal(now = new Date()): Date {
+  const d = new Date(now.getFullYear(), now.getMonth(), 1);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+export function rangeForScope(scope: ViewScope, now = new Date()): { from?: Date; to?: Date } {
+  switch (scope) {
+    case "month":
+      return { from: firstOfThisMonthLocal(now), to: endOfTodayLocal(now) };
+    case "last7":
+      return lastNDaysInclusiveLocal(7, now);
+    case "last14":
+      return lastNDaysInclusiveLocal(14, now);
+    case "last30":
+      return lastNDaysInclusiveLocal(30, now);
+    case "last90":
+      return lastNDaysInclusiveLocal(90, now);
+    case "last365":
+      return lastNDaysInclusiveLocal(365, now);
+    case "lifetime":
+    default:
+      return { from: undefined, to: undefined };
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Inclusive date filter for scopes (dates are ISO "YYYY-MM-DD")              */
+/* -------------------------------------------------------------------------- */
 export function filterByScope(dateISO: string, scope: ViewScope): boolean {
   if (!dateISO) return false;
   if (scope === "lifetime") return true;
 
-  // UTC-safe date math
-  const parts = dateISO.split("-").map((n) => Number(n));
-  if (parts.length !== 3 || parts.some((n) => Number.isNaN(n))) return false;
-  const d = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2]));
-  const now = new Date();
-  const todayUTC = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
-  const dayUTC = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
-  const diffDays = Math.floor((todayUTC - dayUTC) / 86_400_000);
+  const d = parseLocalDateISO(dateISO);
+  if (!d) return false;
 
-  switch (scope) {
-    case "month":
-      return d.getUTCFullYear() === now.getUTCFullYear() && d.getUTCMonth() === now.getUTCMonth();
-    case "last7":
-      return diffDays >= 0 && diffDays < 7;
-    case "last14":
-      return diffDays >= 0 && diffDays < 14;
-    case "last30":
-      return diffDays >= 0 && diffDays < 30;
-    case "last90":
-      return diffDays >= 0 && diffDays < 90;
-    case "last365":
-      return diffDays >= 0 && diffDays < 365;
-    default:
-      return true;
-  }
+  const { from, to } = rangeForScope(scope, new Date());
+  if (from && d < from) return false;
+  if (to && d > to) return false; // inclusive up to end-of-today
+  return true;
 }
 
 type CsvScope = ViewScope;

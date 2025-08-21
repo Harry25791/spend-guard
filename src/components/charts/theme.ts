@@ -1,3 +1,4 @@
+// src/components/charts/theme.ts
 export const chartTheme = {
   axis: {
     tick: { fill: "rgba(255,255,255,0.75)", fontSize: 12 },
