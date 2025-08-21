@@ -1,10 +1,19 @@
+// src/app/page.tsx
 "use client";
 
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import Link from "next/link";
 
-import Aurora from "@/components/ui/Aurora";
-import RangePicker from "@/components/ui/RangePicker";
+// UI
+import SGCard from "@/components/ui/SGCard";
+import KPIRow from "@/components/dashboard/KPIRow";
+
+// Charts (Free tier)
+import Timeline from "@/components/charts/Timeline";
+import TopModelsBar from "@/components/charts/TopModelsBar";
+import ProviderStackArea from "@/components/charts/ProviderStackArea";
+import PieByModel from "@/components/charts/PieByModel";
+import EntryHistogram from "@/components/charts/EntryHistogram";
 
 // Types
 import type { Project as ProjectType } from "@/lib/storage";
@@ -21,26 +30,8 @@ import {
   type ViewScope,
   labelForScope,
   filterByScope,
+  rangeForScope,
 } from "@/lib/io";
-
-// Optional provider utils (kept for future use)
-import { PROVIDER_DEFAULTS, normalizeProvider } from "@/lib/rates";
-
-// Aggregation helper for timeline charts
-import { groupEntriesByPeriod } from "@/lib/aggregate";
-
-// Charts
-import {
-  ResponsiveContainer,
-  CartesianGrid,
-  XAxis,
-  YAxis,
-  Tooltip,
-  BarChart,
-  Bar,
-  LineChart,
-  Line,
-} from "recharts";
 
 type Project = ProjectType;
 
@@ -51,25 +42,37 @@ function ClientOnly({ children }: { children: React.ReactNode }) {
   return <div suppressHydrationWarning>{mounted ? children : null}</div>;
 }
 
-// present but unused right now (kept so imports aren’t removed)
-function getDefaultRate(providerInput: string): number | undefined {
-  const key = normalizeProvider(providerInput);
-  if (!key) return undefined;
-  return (PROVIDER_DEFAULTS as Record<string, number>)[key];
-}
-
 export default function Home() {
-  // Persisted scope — hydration-safe: start as "month" on BOTH server and first client render.
+  // Persisted scope — synced with AppShell header RangePicker
   const [scope, setScopeState] = useState<ViewScope>("month");
   useEffect(() => {
     try {
       setScopeState(getViewScope());
     } catch {}
   }, []);
-  const setScope = (s: ViewScope) => {
+  useEffect(() => {
+    // react to header control
+    const onScope = (e: any) => {
+      const v = e?.detail?.scope as ViewScope | undefined;
+      if (v) setScopeState(v);
+    };
+    window.addEventListener("sg:scope-change", onScope as EventListener);
+    return () => window.removeEventListener("sg:scope-change", onScope as EventListener);
+  }, []);
+  const setScope = useCallback((s: ViewScope) => {
+    // only used if you add a local control; AppShell already dispatches event
     setScopeState(s);
-    if (typeof window !== "undefined") setViewScope(s);
-  };
+    setViewScope(s);
+    window.dispatchEvent(new CustomEvent("sg:scope-change", { detail: { scope: s } }));
+  }, []);
+
+  // Alerts modal open relay from AppShell bell
+  const [isAlertsOpen, setIsAlertsOpen] = useState(false);
+  useEffect(() => {
+    const open = () => setIsAlertsOpen(true);
+    window.addEventListener("sg:open-alerts", open as EventListener);
+    return () => window.removeEventListener("sg:open-alerts", open as EventListener);
+  }, []);
 
   // Projects
   const [projects, setProjects] = useState<Project[]>(() => {
@@ -91,7 +94,7 @@ export default function Home() {
   const hasProjects = hydrated && projects.length > 0;
 
   // Alerts settings
-  type AlertSettings = { alertsEnabled: boolean; monthlyLimitUsd: number };
+  type AlertSettings = { alertsEnabled: boolean; monthlyLimitUsd: number; overLimit?: boolean };
   const [settings, setSettings] = useState<AlertSettings>(() => {
     if (typeof window === "undefined") return { alertsEnabled: true, monthlyLimitUsd: 0 };
     const raw = localStorage.getItem("settings");
@@ -101,6 +104,7 @@ export default function Home() {
       return {
         alertsEnabled: !!parsed.alertsEnabled,
         monthlyLimitUsd: Number(parsed.monthlyLimitUsd) || 0,
+        overLimit: !!parsed.overLimit,
       };
     } catch {
       return { alertsEnabled: true, monthlyLimitUsd: 0 };
@@ -109,7 +113,6 @@ export default function Home() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    // Merge-only write so other keys (e.g., viewScope) remain intact
     const prev = localStorage.getItem("settings");
     let merged: any = {};
     try {
@@ -117,8 +120,25 @@ export default function Home() {
     } catch {}
     merged.alertsEnabled = settings.alertsEnabled;
     merged.monthlyLimitUsd = settings.monthlyLimitUsd;
+    merged.overLimit = settings.overLimit;
     localStorage.setItem("settings", JSON.stringify(merged));
   }, [settings]);
+
+  // Cross-tab resync
+  useEffect(() => {
+    const resync = () => {
+      const stored = localStorage.getItem("projects");
+      const parsed = stored ? JSON.parse(stored) : [];
+      const normalized = Array.isArray(parsed) ? parsed.map((p: any) => ({ ...p, id: String(p.id) })) : [];
+      if (JSON.stringify(normalized) !== JSON.stringify(projects)) setProjects(normalized);
+    };
+    window.addEventListener("visibilitychange", resync);
+    window.addEventListener("focus", resync);
+    return () => {
+      window.removeEventListener("visibilitychange", resync);
+      window.removeEventListener("focus", resync);
+    };
+  }, [projects]);
 
   // Provider labels per project (lifetime)
   const [providerLabels, setProviderLabels] = useState<Record<string, string>>({});
@@ -149,47 +169,6 @@ export default function Home() {
     setProviderLabels(providerMap);
   }, [projects]);
 
-  // Cross-tab resync
-  useEffect(() => {
-    const resync = () => {
-      const stored = localStorage.getItem("projects");
-      const parsed = stored ? JSON.parse(stored) : [];
-      const normalized = Array.isArray(parsed) ? parsed.map((p: any) => ({ ...p, id: String(p.id) })) : [];
-      if (JSON.stringify(normalized) !== JSON.stringify(projects)) setProjects(normalized);
-    };
-    window.addEventListener("visibilitychange", resync);
-    window.addEventListener("focus", resync);
-    return () => {
-      window.removeEventListener("visibilitychange", resync);
-      window.removeEventListener("focus", resync);
-    };
-  }, [projects]);
-
-  // This-month total (for alerts only)
-  const monthTotal = useMemo(() => {
-    if (typeof window === "undefined") return 0;
-    const now = new Date();
-    const yyyy = now.getUTCFullYear();
-    const mm = String(now.getUTCMonth() + 1).padStart(2, "0");
-    const prefix = `${yyyy}-${mm}`;
-    let sum = 0;
-    for (const p of projects) {
-      const raw = localStorage.getItem(`entries-${p.id}`);
-      if (!raw) continue;
-      try {
-        const arr: Array<{ date: string; cost: number }> = JSON.parse(raw);
-        for (const e of arr) {
-          if ((e?.date || "").startsWith(prefix)) sum += Number(e.cost) || 0;
-        }
-      } catch {}
-    }
-    return sum;
-  }, [projects, hydrated]);
-
-  const [isAlertsOpen, setIsAlertsOpen] = useState(false);
-  const isOverLimit =
-    hydrated && settings.alertsEnabled && settings.monthlyLimitUsd > 0 && (monthTotal ?? 0) > settings.monthlyLimitUsd;
-
   // -------- Insights data (client-only) --------
   const [insightsReady, setInsightsReady] = useState(false);
   useEffect(() => setInsightsReady(true), []);
@@ -200,46 +179,72 @@ export default function Home() {
     return getFilteredEntriesForAll(scope);
   }, [insightsReady, scope, projects]);
 
-  // Per-model breakdown (provider/model → tokens, cost)
-  const modelBreakdown = useMemo(() => {
-    const agg: Record<string, { provider: string; tokens: number; cost: number }> = {};
-    for (const p of filteredAll.projects) {
-      const rows = filteredAll.entries[p.id] ?? [];
-      for (const e of rows) {
-        const key = `${(e.provider ?? "unknown").toLowerCase()}::${e.model ?? "unknown"}`;
-        if (!agg[key]) agg[key] = { provider: e.provider ?? "unknown", tokens: 0, cost: 0 };
-        agg[key].tokens += Number(e.tokens) || 0;
-        agg[key].cost += Number(e.cost) || 0;
-      }
-    }
-    return agg;
-  }, [filteredAll]);
-
-  // Top-8 by cost for the bar chart
-  const barData = useMemo(() => {
-    const rows = Object.entries(modelBreakdown).map(([k, v]) => ({
-      name: `${v.provider}/${k.split("::")[1]}`,
-      cost: Number(v.cost.toFixed(2)),
-    }));
-    rows.sort((a, b) => b.cost - a.cost);
-    return rows.slice(0, 8);
-  }, [modelBreakdown]);
-
-  // Show-all toggle for the table
-  const [modelExpanded, setModelExpanded] = useState(false);
-  useEffect(() => setModelExpanded(false), [scope]); // reset on scope change
-
-  // Timeline: day for non-lifetime; month for lifetime
-  const timeline = useMemo(() => {
-    const flat: Array<{ date: string; cost: number; tokens?: number }> = [];
+  // Flatten entries for charts
+  const flatEntries = useMemo(() => {
+    const out: Array<{ date: string; cost: number; tokens?: number; model?: string; provider?: string }> = [];
     for (const p of filteredAll.projects) {
       for (const e of filteredAll.entries[p.id] ?? []) {
-        flat.push({ date: e.date, cost: Number(e.cost) || 0, tokens: Number(e.tokens) || 0 });
+        out.push({
+          date: e.date,
+          cost: Number(e.cost) || 0,
+          tokens: Number(e.tokens) || 0,
+          model: e.model,
+          provider: e.provider,
+        });
       }
     }
-    const period = scope === "lifetime" ? "month" : "day";
-    return groupEntriesByPeriod(flat, period);
-  }, [filteredAll, scope]);
+    return out;
+  }, [filteredAll]);
+
+  // Compute from/to based on scope (for gap-filling, cumulative, etc.)
+  const { from, to } = useMemo(() => rangeForScope(scope, new Date()), [scope]);
+
+  // KPI totals
+  const lifetimeTotals = useMemo(() => {
+    // lifetime from *all* entries regardless of scope
+    let total = 0;
+    for (const p of projects) {
+      const raw = localStorage.getItem(`entries-${p.id}`);
+      if (!raw) continue;
+      try {
+        const arr: Array<{ cost: number }> = JSON.parse(raw);
+        for (const e of arr) total += Number(e.cost) || 0;
+      } catch {}
+    }
+    return Number(total.toFixed(2));
+  }, [projects]);
+
+  const monthTotal = useMemo(() => {
+    // use filterByScope("month") for local-month correctness
+    let sum = 0;
+    for (const p of projects) {
+      const raw = localStorage.getItem(`entries-${p.id}`);
+      if (!raw) continue;
+      try {
+        const arr: Array<{ date: string; cost: number }> = JSON.parse(raw);
+        for (const e of arr) {
+          if (filterByScope(e.date, "month")) sum += Number(e.cost) || 0;
+        }
+      } catch {}
+    }
+    return Number(sum.toFixed(2));
+  }, [projects, hydrated]);
+
+  const projectsCount = projects.length;
+
+  const overLimitActive =
+    hydrated && settings.alertsEnabled && settings.monthlyLimitUsd > 0 && monthTotal > settings.monthlyLimitUsd;
+
+  useEffect(() => {
+    // Keep an over-limit flag for the bell dot if you like
+    setSettings((s) => ({ ...s, overLimit: overLimitActive }));
+  }, [overLimitActive]);
+
+  const limitText = settings.monthlyLimitUsd > 0
+    ? overLimitActive
+      ? `Over by $${(monthTotal - settings.monthlyLimitUsd).toFixed(2)}`
+      : `Remaining $${(settings.monthlyLimitUsd - monthTotal).toFixed(2)}`
+    : "No limit set";
 
   // Per-project totals for CURRENT scope (drives the table)
   const scopedTotals = useMemo(() => {
@@ -258,7 +263,7 @@ export default function Home() {
           filtered.length > 0
             ? filtered.map((e) => e.date).reduce((a, b) => (a > b ? a : b))
             : null;
-        map[p.id] = { total, lastDate };
+        map[p.id] = { total: Number(total.toFixed(2)), lastDate };
       } catch {
         map[p.id] = { total: 0, lastDate: null };
       }
@@ -267,9 +272,7 @@ export default function Home() {
   }, [projects, scope, hydrated]);
 
   // -------- actions --------
-  const exportData = () => {
-    downloadExport(); // full backup (JSON v2)
-  };
+  const exportData = () => downloadExport();
 
   const importData = async (ev: React.ChangeEvent<HTMLInputElement>) => {
     const file = ev.target.files?.[0];
@@ -321,260 +324,179 @@ export default function Home() {
   };
 
   // -------- render --------
-  const timelineTitle =
-    scope === "lifetime" ? "Totals — By Month (Lifetime)" : `Totals — By Day (${labelForScope(scope)})`;
-
   return (
-    <main className="relative min-h-screen w-full bg-ink-900 text-slate-100">
-      {/* Aurora/gradient backdrop */}
-      <Aurora className="pointer-events-none absolute inset-0 opacity-60" />
+    <div className="space-y-6">
+      {/* Add Project */}
+      <SGCard className="p-4">
+        <form onSubmit={addProject} className="flex flex-col sm:flex-row gap-3">
+          <input
+            ref={nameRef}
+            type="text"
+            placeholder="Project name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            className="flex-1 rounded-lg bg-white/10 border border-white/10 px-3 py-2 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-500/60"
+          />
+          <button
+            type="submit"
+            className="rounded-lg px-4 py-2 bg-cyan-500 hover:bg-cyan-400 active:bg-cyan-600 transition shadow shadow-cyan-900/30"
+          >
+            Add
+          </button>
+        </form>
+        {saved && <p className="text-emerald-400 text-sm mt-2">✅ Saved</p>}
+      </SGCard>
 
-      <header className="sticky top-0 z-10 backdrop-blur supports-[backdrop-filter]:bg-white/0">
-        <div className="mx-auto max-w-5xl px-6 py-5 flex items-center justify-between">
-          <h1 className="text-xl md:text-2xl font-semibold tracking-tight">
-            <span className="mr-2">🛡️</span>Spend Guard
-          </h1>
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => setIsAlertsOpen(true)}
-              aria-label="Alerts"
-              className="relative rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 text-slate-200 hover:bg-white/10"
-              title="Alerts"
-            >
-              <svg viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5">
-                <path d="M12 2a6 6 0 00-6 6v2.268c0 .52-.214 1.018-.593 1.376L4 14h16l-1.407-2.356A1.94 1.94 0 0118 10.268V8a6 6 0 00-6-6zm0 20a3 3 0 01-3-3h6a3 3 0 01-3 3z" />
-              </svg>
-              {isOverLimit && (
-                <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-rose-500 ring-2 ring-[#0e1330]" />
-              )}
-            </button>
-            <span className="text-xs md:text-sm text-slate-400">v0.2</span>
-          </div>
-        </div>
-      </header>
+      {/* KPI Row */}
+      <ClientOnly>
+        <KPIRow
+          items={[
+            { label: "This Month Spend", value: `$${monthTotal.toFixed(2)}` },
+            { label: "Lifetime Spend", value: `$${lifetimeTotals.toFixed(2)}` },
+            { label: "Projects", value: String(projectsCount) },
+            { label: "Limit Status", value: limitText, warn: overLimitActive },
+          ]}
+        />
+      </ClientOnly>
 
-      {/* Over-limit banner */}
-      {hydrated && settings.alertsEnabled && settings.monthlyLimitUsd > 0 && monthTotal > settings.monthlyLimitUsd && (
-        <div className="mx-auto max-w-5xl px-6">
-          <div className="mt-4 rounded-xl border border-amber-400/20 bg-amber-500/10 text-amber-200 px-4 py-3">
-            <div className="flex items-center justify-between gap-3">
-              <p className="text-sm">
-                Monthly spend alert: You’ve used <span className="font-semibold">${monthTotal.toFixed(2)}</span> this month,
-                over your limit of <span className="font-semibold">${settings.monthlyLimitUsd.toFixed(2)}</span>.
-              </p>
-              <button
-                onClick={() => setSettings((s) => ({ ...s, alertsEnabled: false }))}
-                className="text-xs underline decoration-amber-300/50 hover:opacity-80"
-              >
-                Dismiss alerts
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      <section className="mx-auto max-w-5xl px-6 py-8">
-        {/* Add Project Card */}
-        <div className="mb-6 rounded-2xl border border-white/10 bg-white/5 backdrop-blur-sm shadow-lg shadow-cyan-900/20 p-4">
-          <form onSubmit={addProject} className="flex flex-col sm:flex-row gap-3">
-            <input
-              ref={nameRef}
-              type="text"
-              placeholder="Project name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="flex-1 rounded-lg bg-white/10 border border-white/10 px-3 py-2 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-500/60"
+      {/* Charts */}
+      <ClientOnly>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <SGCard>
+            <h3 className="text-sm font-semibold text-slate-200 mb-2">
+              Spend over time — {labelForScope(scope)}
+            </h3>
+            <Timeline
+              entries={flatEntries}
+              from={from}
+              to={to}
+              cumulative
+              valueKey="cumCost"
+              ariaLabel="Cumulative spend"
             />
-            <button
-              type="submit"
-              className="rounded-lg px-4 py-2 bg-cyan-500 hover:bg-cyan-400 active:bg-cyan-600 transition shadow shadow-cyan-900/30"
-            >
-              Add
-            </button>
-          </form>
-          {saved && <p className="text-emerald-400 text-sm mt-2">✅ Saved</p>}
+          </SGCard>
+
+          <SGCard>
+            <h3 className="text-sm font-semibold text-slate-200 mb-2">
+              Top models — {labelForScope(scope)}
+            </h3>
+            <TopModelsBar entries={flatEntries} topN={6} />
+          </SGCard>
+
+          <SGCard>
+            <h3 className="text-sm font-semibold text-slate-200 mb-2">
+              Spend by provider — {labelForScope(scope)}
+            </h3>
+            <ProviderStackArea entries={flatEntries} from={from} to={to} />
+          </SGCard>
+
+          <SGCard>
+            <h3 className="text-sm font-semibold text-slate-200 mb-2">
+              Model share — {labelForScope(scope)}
+            </h3>
+            <PieByModel entries={flatEntries} />
+          </SGCard>
+
+          <SGCard className="lg:col-span-2">
+            <h3 className="text-sm font-semibold text-slate-200 mb-2">
+              Entry size distribution — {labelForScope(scope)}
+            </h3>
+            <EntryHistogram entries={flatEntries} metric="tokens" />
+          </SGCard>
         </div>
+      </ClientOnly>
 
-        {/* Per-model breakdown (global, filtered) */}
-        <ClientOnly>
-          <div className="mb-6 rounded-2xl border border-white/10 bg-white/5 backdrop-blur-sm shadow-lg shadow-cyan-900/20 p-4">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-semibold text-slate-200">
-                Per-model breakdown — {labelForScope(scope)}
-              </h3>
-
-              {/* Single, themed range dropdown (no extra chevron) */}
-              <RangePicker value={scope} onChange={setScope} className="ml-1" />
-            </div>
-
-            <div className="h-56 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={barData}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="name" angle={-20} textAnchor="end" height={50} interval={0} />
-                  <YAxis />
-                  <Tooltip />
-                  <Bar dataKey="cost" />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-
-            <div className="mt-3 overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="text-slate-300">
-                  <tr>
-                    <th className="text-left py-2 pr-4">Provider/Model</th>
-                    <th className="text-right py-2 pr-4">Tokens</th>
-                    <th className="text-right py-2">Cost ($)</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {Object.entries(modelBreakdown).length === 0 ? (
-                    <tr>
-                      <td colSpan={3} className="py-4 text-center text-slate-400">
-                        No data
-                      </td>
-                    </tr>
-                  ) : (
-                    (modelExpanded ? Object.entries(modelBreakdown) : Object.entries(modelBreakdown).slice(0, 12))
-                      .sort(([, a], [, b]) => b.cost - a.cost)
-                      .map(([k, v]) => (
-                        <tr key={k} className="border-t border-white/10">
-                          <td className="py-2 pr-4">{`${v.provider}/${k.split("::")[1]}`}</td>
-                          <td className="py-2 pr-4 text-right">{v.tokens.toLocaleString()}</td>
-                          <td className="py-2 text-right">{v.cost.toFixed(2)}</td>
-                        </tr>
-                      ))
-                  )}
-                </tbody>
-              </table>
-              {Object.entries(modelBreakdown).length > 12 && (
-                <div className="mt-2">
-                  <button
-                    onClick={() => setModelExpanded((v) => !v)}
-                    className="text-xs text-cyan-300 hover:text-cyan-200 underline"
-                  >
-                    {modelExpanded ? "Show top 12" : "Show all"}
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-        </ClientOnly>
-
-        {/* Monthly/Daily totals line chart */}
-        <ClientOnly>
-          <div className="mb-6 rounded-2xl border border-white/10 bg-white/5 backdrop-blur-sm shadow-lg shadow-cyan-900/20 p-4">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-semibold text-slate-200">{timelineTitle}</h3>
-            </div>
-            <div className="h-56 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={timeline}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="key" />
-                  <YAxis />
-                  <Tooltip />
-                  <Line type="monotone" dataKey="cost" />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-        </ClientOnly>
-
-        {/* Projects Table Card (mirrors selected scope) */}
-        <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-sm shadow-lg shadow-cyan-900/20 overflow-hidden">
-          <table className="w-full">
-            <thead className="bg-white/5">
-              <tr className="text-left text-slate-300 text-sm">
-                <th className="px-5 py-3">Project</th>
-                <th className="px-5 py-3">Provider</th>
-                <th className="px-5 py-3 text-right">Total ($) — {labelForScope(scope)}</th>
-                <th className="px-5 py-3 text-center">Actions</th>
+      {/* Projects Table */}
+      <SGCard className="overflow-hidden">
+        <table className="w-full">
+          <thead className="bg-white/5">
+            <tr className="text-left text-slate-300 text-sm">
+              <th className="px-5 py-3">Project</th>
+              <th className="px-5 py-3">Provider</th>
+              <th className="px-5 py-3 text-right">Total ($) — {labelForScope(scope)}</th>
+              <th className="px-5 py-3 text-center">Actions</th>
+            </tr>
+          </thead>
+          <tbody suppressHydrationWarning>
+            {!hydrated ? (
+              <tr>
+                <td colSpan={4} className="px-5 py-8 text-center text-slate-400">
+                  Loading…
+                </td>
               </tr>
-            </thead>
-            <tbody suppressHydrationWarning>
-              {!hydrated ? (
-                <tr>
-                  <td colSpan={4} className="px-5 py-8 text-center text-slate-400">
-                    Loading…
+            ) : projects.length === 0 ? (
+              <tr>
+                <td colSpan={4} className="px-5 py-8 text-center text-slate-400">
+                  No projects yet. Add one above
+                </td>
+              </tr>
+            ) : (
+              projects.map((p, i) => (
+                <tr
+                  key={p.id}
+                  className={`border-t border-white/10 ${i % 2 === 0 ? "bg-white/[0.02]" : ""} hover:bg-white/[0.06] transition`}
+                >
+                  <td className="px-5 py-3">
+                    <Link
+                      href={`/projects/${p.id}?name=${encodeURIComponent(p.name)}`}
+                      className="text-cyan-300 hover:text-cyan-200 underline decoration-cyan-500/40"
+                    >
+                      {p.name}
+                    </Link>
+                    {scopedTotals[p.id]?.lastDate && (
+                      <div className="text-xs text-slate-400 mt-1">Last: {scopedTotals[p.id].lastDate}</div>
+                    )}
+                  </td>
+                  <td className="px-5 py-3 text-slate-200">{hydrated ? providerLabels[p.id] ?? "—" : "—"}</td>
+                  <td className="px-5 py-3 text-right font-medium">
+                    ${(scopedTotals[p.id]?.total ?? 0).toFixed(2)}
+                  </td>
+                  <td className="px-5 py-3 text-center">
+                    <button
+                      onClick={() => deleteProject(p.id)}
+                      className="rounded-md px-3 py-1.5 bg-rose-500 hover:bg-rose-400 active:bg-rose-600 transition"
+                    >
+                      Delete
+                    </button>
                   </td>
                 </tr>
-              ) : projects.length === 0 ? (
-                <tr>
-                  <td colSpan={4} className="px-5 py-8 text-center text-slate-400">
-                    No projects yet. Add one above
-                  </td>
-                </tr>
-              ) : (
-                projects.map((p, i) => (
-                  <tr
-                    key={p.id}
-                    className={`border-t border-white/10 ${i % 2 === 0 ? "bg-white/[0.02]" : ""} hover:bg-white/[0.06] transition`}
-                  >
-                    <td className="px-5 py-3">
-                      <Link
-                        href={`/projects/${p.id}?name=${encodeURIComponent(p.name)}`}
-                        className="text-cyan-300 hover:text-cyan-200 underline decoration-cyan-500/40"
-                      >
-                        {p.name}
-                      </Link>
-                      {scopedTotals[p.id]?.lastDate && (
-                        <div className="text-xs text-slate-400 mt-1">Last: {scopedTotals[p.id].lastDate}</div>
-                      )}
-                    </td>
-                    <td className="px-5 py-3 text-slate-200">{hydrated ? providerLabels[p.id] ?? "—" : "—"}</td>
-                    <td className="px-5 py-3 text-right font-medium">
-                      ${(scopedTotals[p.id]?.total ?? 0).toFixed(2)}
-                    </td>
-                    <td className="px-5 py-3 text-center">
-                      <button
-                        onClick={() => deleteProject(p.id)}
-                        className="rounded-md px-3 py-1.5 bg-rose-500 hover:bg-rose-400 active:bg-rose-600 transition"
-                      >
-                        Delete
-                      </button>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+              ))
+            )}
+          </tbody>
+        </table>
+      </SGCard>
+
+      {/* Controls: filtered exports, full backup, import, clear */}
+      <div className="flex flex-wrap items-center gap-3 justify-between pt-2">
+        <div className="text-sm text-slate-400">
+          Scope: <span className="text-slate-200">{labelForScope(scope)}</span> (set in header)
         </div>
 
-        {/* Controls: filtered exports, full backup, import, clear */}
-        <div className="flex flex-wrap items-center gap-3 justify-between pt-4">
-          <div className="flex items-center gap-2">
-            <RangePicker value={scope} onChange={setScope} className="ml-1" />
-          </div>
+        <div className="flex gap-3">
+          <button
+            onClick={() => downloadFilteredCSV(scope)}
+            className="rounded-lg px-4 py-2 bg-emerald-600 hover:bg-emerald-500 transition"
+          >
+            Export CSV — {labelForScope(scope)}
+          </button>
+          <button
+            onClick={() => downloadFilteredJSON(scope)}
+            className="rounded-lg px-4 py-2 bg-emerald-600 hover:bg-emerald-500 transition"
+          >
+            Export JSON — {labelForScope(scope)}
+          </button>
+          <button
+            onClick={exportData}
+            className="rounded-lg px-4 py-2 bg-indigo-600 hover:bg-indigo-500 transition"
+            title="Full backup (all data, versioned JSON)"
+          >
+            Full Backup (JSON v2)
+          </button>
 
-          <div className="flex gap-3">
-            <button
-              onClick={() => downloadFilteredCSV(scope)}
-              className="rounded-lg px-4 py-2 bg-emerald-600 hover:bg-emerald-500 transition"
-            >
-              Export CSV — {labelForScope(scope)}
-            </button>
-            <button
-              onClick={() => downloadFilteredJSON(scope)}
-              className="rounded-lg px-4 py-2 bg-emerald-600 hover:bg-emerald-500 transition"
-            >
-              Export JSON — {labelForScope(scope)}
-            </button>
-            <button
-              onClick={exportData}
-              className="rounded-lg px-4 py-2 bg-indigo-600 hover:bg-indigo-500 transition"
-              title="Full backup (all data, versioned JSON)"
-            >
-              Full Backup (JSON v2)
-            </button>
-
-            <label className="rounded-lg px-4 py-2 bg-indigo-600 hover:bg-indigo-500 transition cursor-pointer">
-              Import JSON
-              <input type="file" accept="application/json" onChange={importData} className="hidden" />
-            </label>
-          </div>
+          <label className="rounded-lg px-4 py-2 bg-indigo-600 hover:bg-indigo-500 transition cursor-pointer">
+            Import JSON
+            <input type="file" accept="application/json" onChange={importData} className="hidden" />
+          </label>
 
           {hasProjects && (
             <button onClick={clearAllProjects} className="rounded-lg px-4 py-2 bg-rose-600 hover:bg-rose-500 transition">
@@ -582,63 +504,63 @@ export default function Home() {
             </button>
           )}
         </div>
+      </div>
 
-        {/* Alerts Settings Modal */}
-        {isAlertsOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center">
-            <div className="absolute inset-0 bg-black/50" onClick={() => setIsAlertsOpen(false)} />
-            <div className="relative z-10 w-full max-w-md rounded-2xl border border-white/10 bg-[#0f172a] p-5 shadow-xl">
-              <div className="mb-3 flex items-center justify-between">
-                <h3 className="text-base font-semibold">Alerts</h3>
-                <button
-                  onClick={() => setIsAlertsOpen(false)}
-                  className="rounded-md px-2 py-1 text-slate-300 hover:bg-white/10"
-                  aria-label="Close alerts settings"
-                >
-                  ✕
-                </button>
-              </div>
+      {/* Alerts Settings Modal */}
+      {isAlertsOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setIsAlertsOpen(false)} />
+          <div className="relative z-10 w-full max-w-md rounded-2xl border border-white/10 bg-[#0f172a] p-5 shadow-xl">
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="text-base font-semibold">Alerts</h3>
+              <button
+                onClick={() => setIsAlertsOpen(false)}
+                className="rounded-md px-2 py-1 text-slate-300 hover:bg-white/10"
+                aria-label="Close alerts settings"
+              >
+                ✕
+              </button>
+            </div>
 
-              <div className="space-y-4">
-                <label className="flex items-center gap-2 text-slate-300">
+            <div className="space-y-4">
+              <label className="flex items-center gap-2 text-slate-300">
+                <input
+                  type="checkbox"
+                  checked={settings.alertsEnabled}
+                  onChange={(e) => setSettings((s) => ({ ...s, alertsEnabled: e.target.checked }))}
+                  className="h-4 w-4 rounded border-white/10 bg-white/10"
+                />
+                Enable alerts
+              </label>
+
+              <div>
+                <label className="block text-sm mb-1 text-slate-300">Monthly limit (USD)</label>
+                <div className="flex items-center gap-2">
+                  <span className="text-slate-300">$</span>
                   <input
-                    type="checkbox"
-                    checked={settings.alertsEnabled}
-                    onChange={(e) => setSettings((s) => ({ ...s, alertsEnabled: e.target.checked }))}
-                    className="h-4 w-4 rounded border-white/10 bg-white/10"
+                    type="number"
+                    min={0}
+                    step="1"
+                    value={settings.monthlyLimitUsd || ""}
+                    onChange={(e) => setSettings((s) => ({ ...s, monthlyLimitUsd: Number(e.target.value) || 0 }))}
+                    placeholder="Monthly limit"
+                    className="w-40 rounded-lg bg-white/10 border border-white/10 px-3 py-2 text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-500/60"
                   />
-                  Enable alerts
-                </label>
-
-                <div>
-                  <label className="block text-sm mb-1 text-slate-300">Monthly limit (USD)</label>
-                  <div className="flex items-center gap-2">
-                    <span className="text-slate-300">$</span>
-                    <input
-                      type="number"
-                      min={0}
-                      step="1"
-                      value={settings.monthlyLimitUsd || ""}
-                      onChange={(e) => setSettings((s) => ({ ...s, monthlyLimitUsd: Number(e.target.value) || 0 }))}
-                      placeholder="Monthly limit"
-                      className="w-40 rounded-lg bg-white/10 border border-white/10 px-3 py-2 text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-500/60"
-                    />
-                  </div>
-                  <p className="mt-1 text-xs text-slate-400">
-                    This month so far: <span className="text-slate-200">${(monthTotal ?? 0).toFixed(2)}</span>
-                  </p>
                 </div>
-              </div>
-
-              <div className="mt-5 flex items-center justify-end gap-2">
-                <button onClick={() => setIsAlertsOpen(false)} className="rounded-md px-3 py-1.5 bg-cyan-600 hover:bg-cyan-500">
-                  Done
-                </button>
+                <p className="mt-1 text-xs text-slate-400">
+                  This month so far: <span className="text-slate-200">${(monthTotal ?? 0).toFixed(2)}</span>
+                </p>
               </div>
             </div>
+
+            <div className="mt-5 flex items-center justify-end gap-2">
+              <button onClick={() => setIsAlertsOpen(false)} className="rounded-md px-3 py-1.5 bg-cyan-600 hover:bg-cyan-500">
+                Done
+              </button>
+            </div>
           </div>
-        )}
-      </section>
-    </main>
+        </div>
+      )}
+    </div>
   );
 }

@@ -1,1 +1,10 @@
-{ "css.lint.unknownAtRules": "ignore" }
+{ "css.lint.unknownAtRules": "ignore",
+
+  // Prevent JSON LS from fetching remote schemas when offline
+  "json.schemaDownload.enable": false,
+
+  // Optional: explicitly map tsconfig files to an empty schema to stop hints
+  "json.schemas": [
+    { "fileMatch": ["tsconfig.json", "tsconfig.*.json"], "schema": {} }
+  ]
+}
