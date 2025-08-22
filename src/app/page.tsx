@@ -475,13 +475,13 @@ export default function Home() {
         <div className="flex gap-3">
           <button
             onClick={() => downloadFilteredCSV(scope)}
-            className="rounded-lg px-4 py-2 bg-emerald-600 hover:bg-emerald-500 transition"
+            className="btn btn-emerald"
           >
             Export CSV — {labelForScope(scope)}
           </button>
           <button
             onClick={() => downloadFilteredJSON(scope)}
-            className="rounded-lg px-4 py-2 bg-emerald-600 hover:bg-emerald-500 transition"
+            className="btn btn-emerald"
           >
             Export JSON — {labelForScope(scope)}
           </button>

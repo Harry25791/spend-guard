@@ -1,14 +1,14 @@
 // src/components/charts/theme.ts
 export const chartTheme = {
+  grid: { stroke: "rgba(255,255,255,0.06)" },
   axis: {
-    tick: { fill: "rgba(255,255,255,0.75)", fontSize: 12 },
-    line: { stroke: "rgba(255,255,255,0.15)" },
+    tick: { fill: "rgba(255,255,255,0.72)" },
+    line: { stroke: "rgba(255,255,255,0.12)" },
   },
-  grid: { stroke: "rgba(255,255,255,0.07)" },
   tooltip: {
-    bg: "rgba(12,14,27,0.9)",
-    border: "1px solid rgba(255,255,255,0.08)",
-    color: "white",
+    bg: "rgba(1, 8, 23, 0.85)",
+    border: "1px solid rgba(255,255,255,0.12)",
     radius: 12,
+    color: "rgba(255,255,255,0.9)",
   },
 };

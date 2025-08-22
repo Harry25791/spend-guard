@@ -68,3 +68,24 @@ body {
     background-repeat: no-repeat;
   }
 }
+
+/* === AppShell container + buttons === */
+@layer components {
+  .sg-container { @apply mx-auto max-w-6xl px-4 md:px-6; }
+
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 text-slate-100
+           px-3.5 py-2 text-sm font-medium shadow-[0_6px_20px_rgba(2,6,23,.25)] transition-colors;
+  }
+  .btn:hover { @apply bg-white/10 border-white/15; }
+  .btn:focus-visible { @apply outline-none ring-2 ring-cyan-500/60; }
+
+  .btn-primary { @apply bg-cyan-600 hover:bg-cyan-500; }
+  .btn-emerald { @apply bg-emerald-600 hover:bg-emerald-500; }
+  .btn-danger  { @apply bg-rose-600 hover:bg-rose-500; }
+  .btn-outline { @apply bg-transparent border-white/20 hover:border-white/30; }
+  .btn-ghost   { @apply bg-white/0 hover:bg-white/5; }
+
+  .btn-sm { @apply px-3 py-1.5 text-xs rounded-lg; }
+  .btn-lg { @apply px-4 py-2 text-base rounded-xl; }
+}
