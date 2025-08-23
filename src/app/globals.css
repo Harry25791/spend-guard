@@ -89,3 +89,12 @@ body {
   .btn-sm { @apply px-3 py-1.5 text-xs rounded-lg; }
   .btn-lg { @apply px-4 py-2 text-base rounded-xl; }
 }
+
+/* ==== Chart glow helpers (SVG-friendly) ==== */
+.sg-glow-violet { filter: drop-shadow(0 0 6px rgba(139,92,246,.45)) drop-shadow(0 0 14px rgba(139,92,246,.25)); }
+.sg-glow-cyan   { filter: drop-shadow(0 0 6px rgba(34,211,238,.45)) drop-shadow(0 0 14px rgba(34,211,238,.25)); }
+
+/* Slightly brighter axes/ticks for dark BG */
+.recharts-cartesian-axis-tick-value { fill: rgba(248,250,252,0.82) !important; }
+.recharts-cartesian-axis-line { stroke: rgba(255,255,255,0.18) !important; }
+.recharts-cartesian-grid-vertical, .recharts-cartesian-grid-horizontal { stroke: rgba(255,255,255,0.08) !important; }

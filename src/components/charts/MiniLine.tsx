@@ -50,11 +50,11 @@ export default function MiniLine({
           />
           <Line
             type="monotone"
-            dataKey={valueKey}
-            stroke="rgba(124,58,237,0.95)"
-            strokeWidth={2}
+            dataKey="cost"
+            stroke="rgba(139,92,246,0.9)"      // visible stroke
+            strokeWidth={2.25}
             dot={false}
-            activeDot={{ r: 2.5 }}
+            activeDot={{ r: 4, className: "sg-glow-violet", style: { filter: "drop-shadow(0 0 10px rgba(139,92,246,.6))" } }}
           />
         </LineChart>
       </ResponsiveContainer>

@@ -1,6 +1,6 @@
-// src/components/charts/TopModelsBar.tsx
 "use client";
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { useState } from "react";
+import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis, Cell } from "recharts";
 import { chartTheme } from "./theme";
 import { fmtUsd } from "./utils";
 
@@ -12,55 +12,48 @@ function prepare(entries: Entry[], topN: number) {
     const key = (e.model || "unknown").trim();
     map.set(key, (map.get(key) || 0) + (Number(e.cost) || 0));
   }
-  const rows = Array.from(map.entries())
+  return Array.from(map.entries())
     .map(([model, cost]) => ({ model, cost: Number(cost.toFixed(2)) }))
-    .sort((a, b) => b.cost - a.cost);
-
-  const top = rows.slice(0, topN);
-  const rest = rows.slice(topN);
-  const otherSum = rest.reduce((s, r) => s + r.cost, 0);
-  if (otherSum > 0) top.push({ model: "Other", cost: Number(otherSum.toFixed(2)) });
-  return top.reverse(); // smallest at top for nicer labels
+    .sort((a, b) => b.cost - a.cost)
+    .slice(0, topN);
 }
 
-type Props = {
-  entries: Entry[];
-  topN?: number;
-  height?: number;
-  ariaLabel?: string;
-};
+const FILL = "rgba(139,92,246,0.38)";   // violet (deeper)
+const STROKE = "rgba(139,92,246,0.85)"; // violet outline
+const FILL_HOVER = "rgba(139,92,246,0.6)";
 
-export default function TopModelsBar({ entries, topN = 5, height = 260, ariaLabel = "Top models" }: Props) {
+export default function TopModelsBar({
+  entries, topN = 8, height = 240, ariaLabel = "Top models by cost",
+}: { entries: Entry[]; topN?: number; height?: number; ariaLabel?: string; }) {
+  const [hi, setHi] = useState<number | null>(null);
   const data = prepare(entries, topN);
 
   return (
-    <div aria-label={ariaLabel} className="w-full">
-      <ResponsiveContainer width="100%" height={height}>
-        <BarChart data={data} layout="vertical" margin={{ top: 6, right: 12, left: 12, bottom: 0 }}>
-          <CartesianGrid stroke={chartTheme.grid.stroke} />
-          <XAxis
-            type="number"
-            tick={{ ...chartTheme.axis.tick }}
-            stroke={chartTheme.axis.line.stroke}
-            tickFormatter={(v) => fmtUsd(v as number)}
-          />
-          <YAxis
-            dataKey="model"
-            type="category"
-            tick={{ ...chartTheme.axis.tick }}
-            stroke={chartTheme.axis.line.stroke}
-            width={120}
-          />
+    <div role="img" aria-label={ariaLabel} className="h-[var(--h,240px)]" style={{ ['--h' as any]: `${height}px` }}>
+      <ResponsiveContainer width="100%" height="100%">
+        <BarChart
+          data={data}
+          margin={{ left: 6, right: 12, top: 8, bottom: 8 }}
+          onMouseMove={(s: any) => setHi(typeof s?.activeTooltipIndex === "number" ? s.activeTooltipIndex : null)}
+          onMouseLeave={() => setHi(null)}
+        >
+          <CartesianGrid stroke={chartTheme.grid.stroke} vertical={false} />
+          <XAxis dataKey="model" tick={{ ...chartTheme.axis.tick, fontSize: 11 }} axisLine={{ ...chartTheme.axis.line }} tickMargin={8}/>
+          <YAxis tick={chartTheme.axis.tick} axisLine={{ ...chartTheme.axis.line }} width={64}/>
           <Tooltip
-            contentStyle={{
-              background: chartTheme.tooltip.bg,
-              border: chartTheme.tooltip.border,
-              borderRadius: chartTheme.tooltip.radius,
-            }}
+            contentStyle={{ background: chartTheme.tooltip.bg, border: chartTheme.tooltip.border, borderRadius: chartTheme.tooltip.radius }}
             labelStyle={{ color: chartTheme.tooltip.color }}
             formatter={(val: number) => fmtUsd(val)}
           />
-          <Bar dataKey="cost" fill="rgba(34,211,238,0.35)" stroke="rgba(34,211,238,0.9)" strokeWidth={1.5} />
+          <Bar dataKey="cost" stroke={STROKE} strokeWidth={1.4} radius={[6,6,6,6]}>
+            {data.map((_, i) => (
+              <Cell
+                key={i}
+                fill={hi === i ? FILL_HOVER : FILL}
+                className={hi === i ? "sg-glow-violet" : ""}
+              />
+            ))}
+          </Bar>
         </BarChart>
       </ResponsiveContainer>
     </div>
