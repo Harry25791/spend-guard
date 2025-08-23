@@ -35,15 +35,32 @@ import {
 
 type Project = ProjectType;
 
-/** Client-only wrapper to avoid SSR/CSR markup mismatches for insights UI */
 function ClientOnly({ children }: { children: React.ReactNode }) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
   return <div suppressHydrationWarning>{mounted ? children : null}</div>;
 }
 
+/** Minimal hero that sits below the top bar (no card, no borders). */
+function HeroIntro() {
+  return (
+    <section
+      aria-label="SpendGuard intro"
+      className="mx-auto max-w-6xl px-6 pt-12 pb-28 md:pt-16 md:pb-40"
+    >
+      <h1 className="text-3xl md:text-4xl font-semibold tracking-tight text-white drop-shadow-[0_1px_0_rgba(0,0,0,0.25)]">
+        SpendGuard Dashboard
+      </h1>
+      <p className="mt-3 text-slate-300 max-w-2xl">
+        Track token usage and spend at a glance. Scroll to reveal insights.
+      </p>
+    </section>
+  );
+}
+
 export default function Home() {
-  // Persisted scope — synced with AppShell header RangePicker
+  // ────────────────────────────────────────────────────────────────────────────
+  // Scope (synced with header)
   const [scope, setScopeState] = useState<ViewScope>("month");
   useEffect(() => {
     try {
@@ -51,7 +68,6 @@ export default function Home() {
     } catch {}
   }, []);
   useEffect(() => {
-    // react to header control
     const onScope = (e: any) => {
       const v = e?.detail?.scope as ViewScope | undefined;
       if (v) setScopeState(v);
@@ -60,13 +76,12 @@ export default function Home() {
     return () => window.removeEventListener("sg:scope-change", onScope as EventListener);
   }, []);
   const setScope = useCallback((s: ViewScope) => {
-    // only used if you add a local control; AppShell already dispatches event
     setScopeState(s);
     setViewScope(s);
     window.dispatchEvent(new CustomEvent("sg:scope-change", { detail: { scope: s } }));
   }, []);
 
-  // Alerts modal open relay from AppShell bell
+  // Alerts modal relay from header
   const [isAlertsOpen, setIsAlertsOpen] = useState(false);
   useEffect(() => {
     const open = () => setIsAlertsOpen(true);
@@ -74,6 +89,7 @@ export default function Home() {
     return () => window.removeEventListener("sg:open-alerts", open as EventListener);
   }, []);
 
+  // ────────────────────────────────────────────────────────────────────────────
   // Projects
   const [projects, setProjects] = useState<Project[]>(() => {
     if (typeof window === "undefined") return [];
@@ -82,15 +98,13 @@ export default function Home() {
     return Array.isArray(parsed) ? parsed.map((p: any) => ({ ...p, id: String(p.id) })) : [];
   });
 
-  // UI state
+  // Add project (kept here until we move to Projects page)
   const [name, setName] = useState("");
   const nameRef = useRef<HTMLInputElement>(null);
   const [saved, setSaved] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   useEffect(() => setHydrated(true), []);
-  useEffect(() => {
-    nameRef.current?.focus();
-  }, []);
+  useEffect(() => { nameRef.current?.focus(); }, []);
   const hasProjects = hydrated && projects.length > 0;
 
   // Alerts settings
@@ -115,16 +129,14 @@ export default function Home() {
     if (typeof window === "undefined") return;
     const prev = localStorage.getItem("settings");
     let merged: any = {};
-    try {
-      merged = prev ? JSON.parse(prev) : {};
-    } catch {}
+    try { merged = prev ? JSON.parse(prev) : {}; } catch {}
     merged.alertsEnabled = settings.alertsEnabled;
     merged.monthlyLimitUsd = settings.monthlyLimitUsd;
     merged.overLimit = settings.overLimit;
     localStorage.setItem("settings", JSON.stringify(merged));
   }, [settings]);
 
-  // Cross-tab resync
+  // Cross‑tab resync
   useEffect(() => {
     const resync = () => {
       const stored = localStorage.getItem("projects");
@@ -140,18 +152,14 @@ export default function Home() {
     };
   }, [projects]);
 
-  // Provider labels per project (lifetime)
+  // Provider labels (lifetime)
   const [providerLabels, setProviderLabels] = useState<Record<string, string>>({});
   useEffect(() => {
     localStorage.setItem("projects", JSON.stringify(projects));
-
     const providerMap: Record<string, string> = {};
     for (const p of projects) {
       const raw = localStorage.getItem(`entries-${p.id}`);
-      if (!raw) {
-        providerMap[p.id] = "—";
-        continue;
-      }
+      if (!raw) { providerMap[p.id] = "—"; continue; }
       try {
         const entries: { provider?: string }[] = JSON.parse(raw);
         const set = new Set(
@@ -161,47 +169,34 @@ export default function Home() {
             .map((v) => v.toLowerCase())
         );
         providerMap[p.id] = set.size === 0 ? "—" : set.size === 1 ? Array.from(set)[0] : "Multiple Providers";
-      } catch {
-        providerMap[p.id] = "—";
-      }
+      } catch { providerMap[p.id] = "—"; }
     }
-
     setProviderLabels(providerMap);
   }, [projects]);
 
-  // -------- Insights data (client-only) --------
+  // Insights data
   const [insightsReady, setInsightsReady] = useState(false);
   useEffect(() => setInsightsReady(true), []);
 
-  // Build filtered entries across all projects for the current scope (client only)
   const filteredAll = useMemo(() => {
     if (!insightsReady) return { projects: [] as Project[], entries: {} as Record<string, any[]> };
     return getFilteredEntriesForAll(scope);
   }, [insightsReady, scope, projects]);
 
-  // Flatten entries for charts
   const flatEntries = useMemo(() => {
     const out: Array<{ date: string; cost: number; tokens?: number; model?: string; provider?: string }> = [];
     for (const p of filteredAll.projects) {
       for (const e of filteredAll.entries[p.id] ?? []) {
-        out.push({
-          date: e.date,
-          cost: Number(e.cost) || 0,
-          tokens: Number(e.tokens) || 0,
-          model: e.model,
-          provider: e.provider,
-        });
+        out.push({ date: e.date, cost: Number(e.cost) || 0, tokens: Number(e.tokens) || 0, model: e.model, provider: e.provider });
       }
     }
     return out;
   }, [filteredAll]);
 
-  // Compute from/to based on scope (for gap-filling, cumulative, etc.)
   const { from, to } = useMemo(() => rangeForScope(scope, new Date()), [scope]);
 
-  // KPI totals
+  // KPIs
   const lifetimeTotals = useMemo(() => {
-    // lifetime from *all* entries regardless of scope
     let total = 0;
     for (const p of projects) {
       const raw = localStorage.getItem(`entries-${p.id}`);
@@ -215,63 +210,47 @@ export default function Home() {
   }, [projects]);
 
   const monthTotal = useMemo(() => {
-    // use filterByScope("month") for local-month correctness
     let sum = 0;
     for (const p of projects) {
       const raw = localStorage.getItem(`entries-${p.id}`);
       if (!raw) continue;
       try {
         const arr: Array<{ date: string; cost: number }> = JSON.parse(raw);
-        for (const e of arr) {
-          if (filterByScope(e.date, "month")) sum += Number(e.cost) || 0;
-        }
+        for (const e of arr) if (filterByScope(e.date, "month")) sum += Number(e.cost) || 0;
       } catch {}
     }
     return Number(sum.toFixed(2));
   }, [projects, hydrated]);
 
   const projectsCount = projects.length;
-
   const overLimitActive =
     hydrated && settings.alertsEnabled && settings.monthlyLimitUsd > 0 && monthTotal > settings.monthlyLimitUsd;
 
-  useEffect(() => {
-    // Keep an over-limit flag for the bell dot if you like
-    setSettings((s) => ({ ...s, overLimit: overLimitActive }));
-  }, [overLimitActive]);
+  useEffect(() => { setSettings((s) => ({ ...s, overLimit: overLimitActive })); }, [overLimitActive]);
 
-  const limitText = settings.monthlyLimitUsd > 0
-    ? overLimitActive
-      ? `Over by $${(monthTotal - settings.monthlyLimitUsd).toFixed(2)}`
-      : `Remaining $${(settings.monthlyLimitUsd - monthTotal).toFixed(2)}`
-    : "No limit set";
+  const limitText =
+    settings.monthlyLimitUsd > 0
+      ? (overLimitActive ? `Over by $${(monthTotal - settings.monthlyLimitUsd).toFixed(2)}`
+                         : `Remaining $${(settings.monthlyLimitUsd - monthTotal).toFixed(2)}`)
+      : "No limit set";
 
-  // Per-project totals for CURRENT scope (drives the table)
   const scopedTotals = useMemo(() => {
     const map: Record<string, { total: number; lastDate: string | null }> = {};
     for (const p of projects) {
       const raw = localStorage.getItem(`entries-${p.id}`);
-      if (!raw) {
-        map[p.id] = { total: 0, lastDate: null };
-        continue;
-      }
+      if (!raw) { map[p.id] = { total: 0, lastDate: null }; continue; }
       try {
         const arr: Array<{ date: string; cost: number }> = JSON.parse(raw);
         const filtered = arr.filter((e) => filterByScope(e?.date || "", scope));
         const total = filtered.reduce((s, e) => s + (Number(e.cost) || 0), 0);
-        const lastDate =
-          filtered.length > 0
-            ? filtered.map((e) => e.date).reduce((a, b) => (a > b ? a : b))
-            : null;
+        const lastDate = filtered.length > 0 ? filtered.map((e) => e.date).reduce((a, b) => (a > b ? a : b)) : null;
         map[p.id] = { total: Number(total.toFixed(2)), lastDate };
-      } catch {
-        map[p.id] = { total: 0, lastDate: null };
-      }
+      } catch { map[p.id] = { total: 0, lastDate: null }; }
     }
     return map;
   }, [projects, scope, hydrated]);
 
-  // -------- actions --------
+  // Actions
   const exportData = () => downloadExport();
 
   const importData = async (ev: React.ChangeEvent<HTMLInputElement>) => {
@@ -279,7 +258,7 @@ export default function Home() {
     if (!file) return;
     try {
       const text = await file.text();
-      const res = importAll(text, "merge"); // or "replace"
+      const res = importAll(text, "merge");
       alert(
         `Import complete.\nProjects: ${res.projects}\nEntries: ${res.entries}${
           res.warnings.length ? `\nWarnings:\n- ${res.warnings.join("\n- ")}` : ""
@@ -296,12 +275,10 @@ export default function Home() {
   const addProject = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
-
     setProjects((prev) => [
       ...prev,
       { id: crypto.randomUUID(), name: name.trim(), provider: "", rateUsdPer1k: undefined },
     ]);
-
     setName("");
     nameRef.current?.focus();
     setSaved(true);
@@ -316,197 +293,224 @@ export default function Home() {
   const clearAllProjects = () => {
     if (window.confirm("Are you sure you want to clear all projects?")) {
       setProjects([]);
-      Object.keys(localStorage).forEach((key) => {
-        if (key.startsWith("entries-")) localStorage.removeItem(key);
-      });
+      Object.keys(localStorage).forEach((key) => { if (key.startsWith("entries-")) localStorage.removeItem(key); });
       localStorage.removeItem("projects");
     }
   };
 
-  // -------- render --------
+  // ────────────────────────────────────────────────────────────────────────────
+  // Reveal after hero scroll
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  const [reveal, setReveal] = useState(false);
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        const e = entries[0];
+        if (!e.isIntersecting) setReveal(true); // triggers once hero is scrolled past
+      },
+      { root: null, threshold: 0.01 }
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+
+  // helper for stagger (slower / delayed)
+  const revealClass = (idx: number) =>
+    `transition-all duration-[900ms] ease-out will-change-transform ${
+      reveal ? "opacity-100 translate-y-0" : "opacity-0 translate-y-6"
+    } [transition-delay:${Math.min(1200 + idx * 140, 2400)}ms]`;
+
+  // ────────────────────────────────────────────────────────────────────────────
+  // Render
   return (
-    <div className="space-y-6">
-      {/* Add Project */}
-      <SGCard className="p-4">
-        <form onSubmit={addProject} className="flex flex-col sm:flex-row gap-3">
-          <input
-            ref={nameRef}
-            type="text"
-            placeholder="Project name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            className="flex-1 rounded-lg bg-white/10 border border-white/10 px-3 py-2 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-500/60"
-          />
-          <button
-            type="submit"
-            className="rounded-lg px-4 py-2 bg-cyan-500 hover:bg-cyan-400 active:bg-cyan-600 transition shadow shadow-cyan-900/30"
-          >
-            Add
-          </button>
-        </form>
-        {saved && <p className="text-emerald-400 text-sm mt-2">✅ Saved</p>}
-      </SGCard>
+    <>
+      <HeroIntro />
+      {/* Sentinel placed right after hero to trigger reveal when hero is scrolled past */}
+      <div ref={sentinelRef} aria-hidden className="h-px w-full" />
 
-      {/* KPI Row */}
-      <ClientOnly>
-        <KPIRow
-          items={[
-            { label: "This Month Spend", value: `$${monthTotal.toFixed(2)}` },
-            { label: "Lifetime Spend", value: `$${lifetimeTotals.toFixed(2)}` },
-            { label: "Projects", value: String(projectsCount) },
-            { label: "Limit Status", value: limitText, warn: overLimitActive },
-          ]}
-        />
-      </ClientOnly>
+      <div className="mx-auto max-w-6xl px-6 space-y-6">
+        {/* Add Project */}
+        <div className={revealClass(0)}>
+          <SGCard className="p-4">
+            <form onSubmit={addProject} className="flex flex-col sm:flex-row gap-3">
+              <input
+                ref={nameRef}
+                type="text"
+                placeholder="Project name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="flex-1 rounded-lg bg-white/10 border border-white/10 px-3 py-2 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-500/60"
+              />
+              <button
+                type="submit"
+                className="rounded-lg px-4 py-2 bg-cyan-500 hover:bg-cyan-400 active:bg-cyan-600 transition shadow shadow-cyan-900/30"
+              >
+                Add
+              </button>
+            </form>
+            {saved && <p className="text-emerald-400 text-sm mt-2">✅ Saved</p>}
+          </SGCard>
+        </div>
 
-      {/* Charts */}
-      <ClientOnly>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <SGCard>
-            <h3 className="text-sm font-semibold text-slate-200 mb-2">
-              Spend over time — {labelForScope(scope)}
-            </h3>
-            <Timeline
-              entries={flatEntries}
-              from={from}
-              to={to}
-              cumulative
-              valueKey="cumCost"
-              ariaLabel="Cumulative spend"
+        {/* KPI Row */}
+        <div className={revealClass(1)}>
+          <ClientOnly>
+            <KPIRow
+              className=""
+              items={[
+                { label: "This Month Spend", value: `$${monthTotal.toFixed(2)}` },
+                { label: "Lifetime Spend", value: `$${lifetimeTotals.toFixed(2)}` },
+                { label: "Projects", value: String(projectsCount) },
+                { label: "Limit Status", value: limitText, warn: overLimitActive },
+              ]}
             />
-          </SGCard>
-
-          <SGCard>
-            <h3 className="text-sm font-semibold text-slate-200 mb-2">
-              Top models — {labelForScope(scope)}
-            </h3>
-            <TopModelsBar entries={flatEntries} topN={6} />
-          </SGCard>
-
-          <SGCard>
-            <h3 className="text-sm font-semibold text-slate-200 mb-2">
-              Spend by provider — {labelForScope(scope)}
-            </h3>
-            <ProviderStackArea entries={flatEntries} from={from} to={to} />
-          </SGCard>
-
-          <SGCard>
-            <h3 className="text-sm font-semibold text-slate-200 mb-2">
-              Model share — {labelForScope(scope)}
-            </h3>
-            <PieByModel entries={flatEntries} />
-          </SGCard>
-
-          <SGCard className="lg:col-span-2">
-            <h3 className="text-sm font-semibold text-slate-200 mb-2">
-              Entry size distribution — {labelForScope(scope)}
-            </h3>
-            <EntryHistogram entries={flatEntries} metric="tokens" />
-          </SGCard>
+          </ClientOnly>
         </div>
-      </ClientOnly>
 
-      {/* Projects Table */}
-      <SGCard className="overflow-hidden">
-        <table className="w-full">
-          <thead className="bg-white/5">
-            <tr className="text-left text-slate-300 text-sm">
-              <th className="px-5 py-3">Project</th>
-              <th className="px-5 py-3">Provider</th>
-              <th className="px-5 py-3 text-right">Total ($) — {labelForScope(scope)}</th>
-              <th className="px-5 py-3 text-center">Actions</th>
-            </tr>
-          </thead>
-          <tbody suppressHydrationWarning>
-            {!hydrated ? (
-              <tr>
-                <td colSpan={4} className="px-5 py-8 text-center text-slate-400">
-                  Loading…
-                </td>
-              </tr>
-            ) : projects.length === 0 ? (
-              <tr>
-                <td colSpan={4} className="px-5 py-8 text-center text-slate-400">
-                  No projects yet. Add one above
-                </td>
-              </tr>
-            ) : (
-              projects.map((p, i) => (
-                <tr
-                  key={p.id}
-                  className={`border-t border-white/10 ${i % 2 === 0 ? "bg-white/[0.02]" : ""} hover:bg-white/[0.06] transition`}
-                >
-                  <td className="px-5 py-3">
-                    <Link
-                      href={`/projects/${p.id}?name=${encodeURIComponent(p.name)}`}
-                      className="text-cyan-300 hover:text-cyan-200 underline decoration-cyan-500/40"
-                    >
-                      {p.name}
-                    </Link>
-                    {scopedTotals[p.id]?.lastDate && (
-                      <div className="text-xs text-slate-400 mt-1">Last: {scopedTotals[p.id].lastDate}</div>
-                    )}
-                  </td>
-                  <td className="px-5 py-3 text-slate-200">{hydrated ? providerLabels[p.id] ?? "—" : "—"}</td>
-                  <td className="px-5 py-3 text-right font-medium">
-                    ${(scopedTotals[p.id]?.total ?? 0).toFixed(2)}
-                  </td>
-                  <td className="px-5 py-3 text-center">
-                    <button
-                      onClick={() => deleteProject(p.id)}
-                      className="rounded-md px-3 py-1.5 bg-rose-500 hover:bg-rose-400 active:bg-rose-600 transition"
-                    >
-                      Delete
-                    </button>
-                  </td>
+        {/* Charts */}
+        <div className={revealClass(2)}>
+          <ClientOnly>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <SGCard>
+                <h3 className="text-sm font-semibold text-slate-200 mb-2">
+                  Spend over time — {labelForScope(scope)}
+                </h3>
+                <Timeline entries={flatEntries} from={from} to={to} cumulative valueKey="cumCost" ariaLabel="Cumulative spend" />
+              </SGCard>
+
+              <SGCard>
+                <h3 className="text-sm font-semibold text-slate-200 mb-2">
+                  Top models — {labelForScope(scope)}
+                </h3>
+                <TopModelsBar entries={flatEntries} topN={6} />
+              </SGCard>
+
+              <SGCard>
+                <h3 className="text-sm font-semibold text-slate-200 mb-2">
+                  Spend by provider — {labelForScope(scope)}
+                </h3>
+                <ProviderStackArea entries={flatEntries} from={from} to={to} />
+              </SGCard>
+
+              <SGCard>
+                <h3 className="text-sm font-semibold text-slate-200 mb-2">
+                  Model share — {labelForScope(scope)}
+                </h3>
+                <PieByModel entries={flatEntries} />
+              </SGCard>
+
+              <SGCard className="lg:col-span-2">
+                <h3 className="text-sm font-semibold text-slate-200 mb-2">
+                  Entry size distribution — {labelForScope(scope)}
+                </h3>
+                <EntryHistogram entries={flatEntries} metric="tokens" />
+              </SGCard>
+            </div>
+          </ClientOnly>
+        </div>
+
+        {/* Projects Table */}
+        <div className={revealClass(3)}>
+          <SGCard className="overflow-hidden">
+            <table className="w-full">
+              <thead className="bg-white/5">
+                <tr className="text-left text-slate-300 text-sm">
+                  <th className="px-5 py-3">Project</th>
+                  <th className="px-5 py-3">Provider</th>
+                  <th className="px-5 py-3 text-right">Total ($) — {labelForScope(scope)}</th>
+                  <th className="px-5 py-3 text-center">Actions</th>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </SGCard>
-
-      {/* Controls: filtered exports, full backup, import, clear */}
-      <div className="flex flex-wrap items-center gap-3 justify-between pt-2">
-        <div className="text-sm text-slate-400">
-          Scope: <span className="text-slate-200">{labelForScope(scope)}</span> (set in header)
+              </thead>
+              <tbody suppressHydrationWarning>
+                {!hydrated ? (
+                  <tr>
+                    <td colSpan={4} className="px-5 py-8 text-center text-slate-400">Loading…</td>
+                  </tr>
+                ) : projects.length === 0 ? (
+                  <tr>
+                    <td colSpan={4} className="px-5 py-8 text-center text-slate-400">No projects yet. Add one above</td>
+                  </tr>
+                ) : (
+                  projects.map((p, i) => (
+                    <tr
+                      key={p.id}
+                      className={`border-t border-white/10 ${i % 2 === 0 ? "bg-white/[0.02]" : ""} hover:bg-white/[0.06] transition`}
+                    >
+                      <td className="px-5 py-3">
+                        <Link
+                          href={`/projects/${p.id}?name=${encodeURIComponent(p.name)}`}
+                          className="text-cyan-300 hover:text-cyan-200 underline decoration-cyan-500/40"
+                        >
+                          {p.name}
+                        </Link>
+                        {scopedTotals[p.id]?.lastDate && (
+                          <div className="text-xs text-slate-400 mt-1">Last: {scopedTotals[p.id].lastDate}</div>
+                        )}
+                      </td>
+                      <td className="px-5 py-3 text-slate-200">{hydrated ? providerLabels[p.id] ?? "—" : "—"}</td>
+                      <td className="px-5 py-3 text-right font-medium">${(scopedTotals[p.id]?.total ?? 0).toFixed(2)}</td>
+                      <td className="px-5 py-3 text-center">
+                        <button
+                          onClick={() => deleteProject(p.id)}
+                          className="rounded-md px-3 py-1.5 bg-rose-500 hover:bg-rose-400 active:bg-rose-600 transition"
+                        >
+                          Delete
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </SGCard>
         </div>
 
-        <div className="flex gap-3">
-          <button
-            onClick={() => downloadFilteredCSV(scope)}
-            className="bg-emerald-600 hover:bg-emerald-500"
-          >
-            Export CSV — {labelForScope(scope)}
-          </button>
-          <button
-            onClick={() => downloadFilteredJSON(scope)}
-            className="bg-emerald-600 hover:bg-emerald-500"
-          >
-            Export JSON — {labelForScope(scope)}
-          </button>
-          <button
-            onClick={exportData}
-            className="rounded-lg px-4 py-2 bg-indigo-600 hover:bg-indigo-500 transition"
-            title="Full backup (all data, versioned JSON)"
-          >
-            Full Backup (JSON v2)
-          </button>
+        {/* Controls: filtered exports, full backup, import, clear */}
+        <div className={revealClass(4)}>
+          <div className="flex flex-wrap items-center gap-3 justify-between pt-2">
+            <div className="text-sm text-slate-400">
+              Scope: <span className="text-slate-200">{labelForScope(scope)}</span> (set in header)
+            </div>
 
-          <label className="rounded-lg px-4 py-2 bg-indigo-600 hover:bg-indigo-500 transition cursor-pointer">
-            Import JSON
-            <input type="file" accept="application/json" onChange={importData} className="hidden" />
-          </label>
+            <div className="flex gap-3">
+              <button
+                onClick={() => downloadFilteredCSV(scope)}
+                className="rounded-lg px-4 py-2 bg-emerald-600 hover:bg-emerald-500 transition"
+              >
+                Export CSV — {labelForScope(scope)}
+              </button>
+              <button
+                onClick={() => downloadFilteredJSON(scope)}
+                className="rounded-lg px-4 py-2 bg-emerald-600 hover:bg-emerald-500 transition"
+              >
+                Export JSON — {labelForScope(scope)}
+              </button>
+              <button
+                onClick={exportData}
+                className="rounded-lg px-4 py-2 bg-indigo-600 hover:bg-indigo-500 transition"
+                title="Full backup (all data, versioned JSON)"
+              >
+                Full Backup (JSON v2)
+              </button>
 
-          {hasProjects && (
-            <button onClick={clearAllProjects} className="rounded-lg px-4 py-2 bg-rose-600 hover:bg-rose-500 transition">
-              Clear All Projects
-            </button>
-          )}
+              <label className="rounded-lg px-4 py-2 bg-indigo-600 hover:bg-indigo-500 transition cursor-pointer">
+                Import JSON
+                <input type="file" accept="application/json" onChange={importData} className="hidden" />
+              </label>
+
+              {hasProjects && (
+                <button onClick={clearAllProjects} className="rounded-lg px-4 py-2 bg-rose-600 hover:bg-rose-500 transition">
+                  Clear All Projects
+                </button>
+              )}
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* Alerts Settings Modal */}
+      {/* Alerts Settings Modal (not staggered; global overlay) */}
       {isAlertsOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
           <div className="absolute inset-0 bg-black/50" onClick={() => setIsAlertsOpen(false)} />
@@ -561,6 +565,6 @@ export default function Home() {
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 }

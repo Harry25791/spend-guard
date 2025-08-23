@@ -1,10 +1,12 @@
-export default function Reports() {
+export default function ReportsPage() {
   return (
-    <div className="space-y-4">
-      <h1 className="text-xl font-semibold">Reports</h1>
-      <p className="text-slate-400">
-        Premium Insights & PDF export will live here in Phase 2. For now, this is a placeholder.
-      </p>
-    </div>
+    <main className="mx-auto max-w-6xl px-6 py-8">
+      <h1 className="text-xl md:text-2xl font-semibold tracking-tight mb-4">Reports</h1>
+      <div className="sg-card p-5">
+        <p className="text-slate-300">
+          Premium insights & one‑click PDF exports will live here. For now, this is a placeholder.
+        </p>
+      </div>
+    </main>
   );
 }
