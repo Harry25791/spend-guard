@@ -15,49 +15,42 @@ export default function AppShell({ children }: React.PropsWithChildren) {
     window.dispatchEvent(new CustomEvent("sg:scope-change", { detail: { scope: s } }));
   };
 
-  // alerts dot
-  const [over, setOver] = useState(false);
-  useEffect(() => {
-    try {
-      const s = JSON.parse(localStorage.getItem("settings") || "{}");
-      const limit = Number(s.monthlyLimitUsd) || 0;
-      if (!limit) return setOver(false);
-      const projs = JSON.parse(localStorage.getItem("projects") || "[]") as Array<{id:string}>;
-      const now = new Date(); const ym = `${now.getUTCFullYear()}-${String(now.getUTCMonth()+1).padStart(2,"0")}`;
-      let total = 0;
-      for (const p of projs) {
-        const rows = JSON.parse(localStorage.getItem(`entries-${p.id}`) || "[]") as Array<{date:string;cost:number}>;
-        for (const r of rows) if ((r.date || "").startsWith(ym)) total += Number(r.cost)||0;
-      }
-      setOver(total > limit);
-    } catch { setOver(false); }
-  }, []);
-
-  // header fade
+  // header scrolled effect
   const [scrolled, setScrolled] = useState(false);
   useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 6);
-    onScroll(); window.addEventListener("scroll", onScroll, { passive: true });
+    const onScroll = () => setScrolled(window.scrollY > 4);
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
-  return (
-    <div className="relative min-h-screen w-full bg-ink-900 text-slate-100">
-      <Background />
-      <Aurora className="opacity-60" />
+  // over-limit indicator (reads from settings; safe default)
+  const [over, setOver] = useState(false);
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("settings");
+      if (!raw) return;
+      const s = JSON.parse(raw);
+      setOver(Boolean(s?.overLimit));
+    } catch {}
+  }, []);
 
-      {/* App grid. Rail above header so they never overlap visually. */}
-      <div className="relative grid grid-cols-[240px,1fr] md:grid-cols-[260px,1fr]">
-        <aside className="sticky top-0 z-40 hidden min-h-screen border-r border-white/10 sm:block">
-          <LeftRail />
-        </aside>
+  return (
+    <div className="min-h-screen">
+      {/* Decorative background sits behind everything and ignores pointer events */}
+      <Background />
+
+      <div className="flex">
+        {/* Left rail keeps its own stacking; interactive by default */}
+        <LeftRail />
 
         {/* Right column = its own stacking context; ALWAYS interactive */}
         <div className="relative z-10 min-h-screen pointer-events-auto">
           {/* Header stays inside the right column */}
           <header
             className={[
-              "sticky top-0 z-30 border-b backdrop-blur transition-colors duration-300 supports-[backdrop-filter]:bg-white/0",
+              // ⚠️ KEY FIX: ensure header is explicitly interactive and above any layers
+              "sticky top-0 z-30 pointer-events-auto border-b backdrop-blur transition-colors duration-300 supports-[backdrop-filter]:bg-white/0",
               scrolled ? "bg-white/[0.06] border-white/15" : "bg-white/[0.00] border-white/10",
             ].join(" ")}
           >
@@ -82,7 +75,7 @@ export default function AppShell({ children }: React.PropsWithChildren) {
                   onClick={() => window.dispatchEvent(new CustomEvent("sg:open-alerts"))}
                 >
                   <svg viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5">
-                    <path d="M12 2a6 6 0 00-6 6v2.268c0 .52-.214 1.018-.593 1.376L4 14h16l-1.407-2.356A1.94 1.94 0 0118 10.268V8a6 6 0 00-6-6zm0 20a3 3 0 01-3-3h6a3 3 0 01-3 3z" />
+                    <path d="M12 2a6 6 0 00-6 6v2.268c0 .52...118 10.268V8a6 6 0 00-6-6zm0 20a3 3 0 01-3-3h6a3 3 0 01-3 3z" />
                   </svg>
                   {over && <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-rose-500 ring-2 ring-ink-900" />}
                 </button>
@@ -91,7 +84,7 @@ export default function AppShell({ children }: React.PropsWithChildren) {
           </header>
 
           {/* Content: explicitly above any pseudo-layers; always interactive */}
-          <main className="sg-container relative z-[1] py-6 pointer-events-auto">
+          <main className="sg-container relative z-20 py-6 pointer-events-auto">
             {children}
           </main>
         </div>
