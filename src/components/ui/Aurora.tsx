@@ -1,14 +1,19 @@
-export default function Aurora({ className = "" }: { className?: string }) {
+"use client";
+import clsx from "clsx";
+
+type Props = React.HTMLAttributes<HTMLDivElement>;
+
+export default function Aurora({ className, ...rest }: Props) {
   return (
-    <div aria-hidden className={`absolute inset-0 -z-10 overflow-hidden ${className}`}>
-      <div
-        className="absolute -top-32 left-1/2 h-[60vmax] w-[60vmax] -translate-x-1/2 rounded-full blur-3xl"
-        style={{ background: "radial-gradient(closest-side, rgba(139,92,246,.35), transparent)" }}
-      />
-      <div
-        className="absolute top-1/3 -right-24 h-[40vmax] w-[40vmax] rounded-full blur-3xl"
-        style={{ background: "radial-gradient(closest-side, rgba(34,211,238,.28), transparent)" }}
-      />
+    <div
+      aria-hidden
+      {...rest}
+      className={clsx(
+        "pointer-events-none absolute inset-0 -z-40", // <- behind content, cannot catch clicks
+        className
+      )}
+    >
+      {/* your aurora layers, canvas, svgs, etc. */}
     </div>
   );
 }
