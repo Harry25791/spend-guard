@@ -7,14 +7,15 @@ import { getViewScope, setViewScope, type ViewScope } from "@/lib/io";
 import Background from "../layout/Background";
 
 export default function AppShell({ children }: React.PropsWithChildren) {
+  // header scope
   const [scope, setScopeState] = useState<ViewScope>("month");
   useEffect(() => { try { setScopeState(getViewScope()); } catch {} }, []);
   const setScope = (s: ViewScope) => {
-    setScopeState(s);
-    setViewScope(s);
+    setScopeState(s); setViewScope(s);
     window.dispatchEvent(new CustomEvent("sg:scope-change", { detail: { scope: s } }));
   };
 
+  // alerts dot
   const [over, setOver] = useState(false);
   useEffect(() => {
     try {
@@ -22,52 +23,51 @@ export default function AppShell({ children }: React.PropsWithChildren) {
       const limit = Number(s.monthlyLimitUsd) || 0;
       if (!limit) return setOver(false);
       const projs = JSON.parse(localStorage.getItem("projects") || "[]") as Array<{id:string}>;
-      const now = new Date(); const y = now.getUTCFullYear(); const m = String(now.getUTCMonth()+1).padStart(2,"0");
+      const now = new Date(); const ym = `${now.getUTCFullYear()}-${String(now.getUTCMonth()+1).padStart(2,"0")}`;
       let total = 0;
       for (const p of projs) {
         const rows = JSON.parse(localStorage.getItem(`entries-${p.id}`) || "[]") as Array<{date:string;cost:number}>;
-        for (const r of rows) if ((r.date||"").startsWith(`${y}-${m}`)) total += Number(r.cost)||0;
+        for (const r of rows) if ((r.date || "").startsWith(ym)) total += Number(r.cost)||0;
       }
       setOver(total > limit);
     } catch { setOver(false); }
   }, []);
 
+  // header fade
   const [scrolled, setScrolled] = useState(false);
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 6);
-    onScroll();
-    window.addEventListener("scroll", onScroll, { passive: true });
+    onScroll(); window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
   return (
     <div className="relative min-h-screen w-full bg-ink-900 text-slate-100">
       <Background />
-      <Aurora className="absolute inset-0 pointer-events-none -z-40 opacity-60" />
+      <Aurora className="opacity-60" />
 
-      {/* Two-column app grid */}
-      <div className="relative z-0 grid grid-cols-[240px,1fr] md:grid-cols-[260px,1fr]">
-        {/* Left rail */}
-        <aside className="sticky top-0 z-30 hidden min-h-screen border-r border-white/10 sm:block">
+      {/* App grid. Rail above header so they never overlap visually. */}
+      <div className="relative grid grid-cols-[240px,1fr] md:grid-cols-[260px,1fr]">
+        <aside className="sticky top-0 z-40 hidden min-h-screen border-r border-white/10 sm:block">
           <LeftRail />
         </aside>
 
-        {/* Right column */}
-        <div className="min-h-screen">
-          {/* HEADER — first in the column, sticky, above content */}
+        {/* Right column = its own stacking context; ALWAYS interactive */}
+        <div className="relative z-10 min-h-screen pointer-events-auto">
+          {/* Header stays inside the right column */}
           <header
             className={[
-              "sticky top-0 z-40 border-b backdrop-blur transition-colors duration-300 supports-[backdrop-filter]:bg-white/0",
+              "sticky top-0 z-30 border-b backdrop-blur transition-colors duration-300 supports-[backdrop-filter]:bg-white/0",
               scrolled ? "bg-white/[0.06] border-white/15" : "bg-white/[0.00] border-white/10",
             ].join(" ")}
           >
             <div className="sg-container flex items-center justify-between py-4">
               <div className="flex items-center gap-2">
+                {/* SINGLE source of truth for header icon — using the PNG now */}
                 <img
-                  src="/brand/guardian-badge.svg"
-                  alt=""
-                  className="hidden h-6 w-6 opacity-90 md:block"
-                  onError={(e) => ((e.currentTarget.style.display = "none"))}
+                  src="/brand/guardian.png"
+                  alt="SpendGuard"
+                  className="hidden h-6 w-6 rounded-sm object-contain md:block"
                 />
                 <span className="text-base font-semibold tracking-tight">SpendGuard</span>
                 <span className="ml-2 text-xs text-slate-400">v0.2</span>
@@ -90,8 +90,10 @@ export default function AppShell({ children }: React.PropsWithChildren) {
             </div>
           </header>
 
-          {/* PAGE CONTENT */}
-          <main className="sg-container py-6">{children}</main>
+          {/* Content: explicitly above any pseudo-layers; always interactive */}
+          <main className="sg-container relative z-[1] py-6 pointer-events-auto">
+            {children}
+          </main>
         </div>
       </div>
     </div>

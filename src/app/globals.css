@@ -98,3 +98,17 @@ body {
 .recharts-cartesian-axis-tick-value { fill: rgba(248,250,252,0.82) !important; }
 .recharts-cartesian-axis-line { stroke: rgba(255,255,255,0.18) !important; }
 .recharts-cartesian-grid-vertical, .recharts-cartesian-grid-horizontal { stroke: rgba(255,255,255,0.08) !important; }
+
+/* Ensure main content is always interactive */
+.pe-auto { pointer-events: auto; }
+
+/* --- hard safety: backgrounds + container pseudo-layers never intercept clicks --- */
+[class*="aurora"], .aurora-layer, .bg-layer {
+  pointer-events: none !important;
+}
+
+.sg-container::before,
+.sg-container::after {
+  pointer-events: none !important;
+  z-index: 0 !important;
+}

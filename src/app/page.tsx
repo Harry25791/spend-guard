@@ -6,6 +6,8 @@ import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 // UI
 import SGCard from "@/components/ui/SGCard";
 import KPIRow from "@/components/dashboard/KPIRow";
+import SpendGuardAvatar from "@/components/branding/SpendGuardAvatar";
+import Image from "next/image";
 
 // Charts (Free tier)
 import Timeline from "@/components/charts/Timeline";
@@ -63,7 +65,16 @@ function HeroIntro() {
 
       {/* Avatar / graphic placeholder (right) */}
       <div className="relative md:col-span-5">
-        <div className="aspect-[4/5] w-full rounded-3xl border border-white/10 bg-white/5 shadow-[0_0_40px_rgba(100,80,255,0.2)]" />
+        <div className="relative w-full aspect-[4/5] rounded-3xl border border-white/10 bg-white/5 shadow-[0_0_40px_rgba(138,77,255,0.25)] overflow-hidden">
+          <Image
+            src="/brand/SpendGuardAvatar.png"           // your PNG placeholder
+            alt="SpendGuard avatar"
+            fill
+            sizes="(min-width: 768px) 420px, 100vw"
+            className="object-cover"
+            priority
+          />
+        </div>
       </div>
 
       {/* Subtle bottom fade to help the handoff */}

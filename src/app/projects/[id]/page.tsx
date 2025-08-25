@@ -166,7 +166,6 @@ export default function ProjectDetail() {
   }, []);
 
   const dateRef = useRef<HTMLInputElement>(null);
-  useEffect(() => { dateRef.current?.focus(); }, []);
 
   // ── Load / Save
   useEffect(() => {
