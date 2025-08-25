@@ -7,43 +7,31 @@ import { getViewScope, setViewScope, type ViewScope } from "@/lib/io";
 import Background from "../layout/Background";
 
 export default function AppShell({ children }: React.PropsWithChildren) {
-  // Global scope in header (pages already read getViewScope on mount)
   const [scope, setScopeState] = useState<ViewScope>("month");
-  useEffect(() => {
-    try {
-      setScopeState(getViewScope());
-    } catch {}
-  }, []);
+  useEffect(() => { try { setScopeState(getViewScope()); } catch {} }, []);
   const setScope = (s: ViewScope) => {
     setScopeState(s);
     setViewScope(s);
-    // broadcast so pages can react immediately if they want
     window.dispatchEvent(new CustomEvent("sg:scope-change", { detail: { scope: s } }));
   };
 
-  // Simple alerts badge check (month total)
   const [over, setOver] = useState(false);
   useEffect(() => {
     try {
       const s = JSON.parse(localStorage.getItem("settings") || "{}");
       const limit = Number(s.monthlyLimitUsd) || 0;
       if (!limit) return setOver(false);
-      const projs = JSON.parse(localStorage.getItem("projects") || "[]") as Array<{ id: string }>;
-      const now = new Date();
-      const y = now.getUTCFullYear();
-      const m = String(now.getUTCMonth() + 1).padStart(2, "0");
+      const projs = JSON.parse(localStorage.getItem("projects") || "[]") as Array<{id:string}>;
+      const now = new Date(); const y = now.getUTCFullYear(); const m = String(now.getUTCMonth()+1).padStart(2,"0");
       let total = 0;
       for (const p of projs) {
-        const rows = JSON.parse(localStorage.getItem(`entries-${p.id}`) || "[]") as Array<{ date: string; cost: number }>;
-        for (const r of rows) if ((r.date || "").startsWith(`${y}-${m}`)) total += Number(r.cost) || 0;
+        const rows = JSON.parse(localStorage.getItem(`entries-${p.id}`) || "[]") as Array<{date:string;cost:number}>;
+        for (const r of rows) if ((r.date||"").startsWith(`${y}-${m}`)) total += Number(r.cost)||0;
       }
       setOver(total > limit);
-    } catch {
-      setOver(false);
-    }
+    } catch { setOver(false); }
   }, []);
 
-  // Header subtle fade on scroll
   const [scrolled, setScrolled] = useState(false);
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 6);
@@ -53,22 +41,23 @@ export default function AppShell({ children }: React.PropsWithChildren) {
   }, []);
 
   return (
-    <div className="relative w-full min-h-screen bg-ink-900 text-slate-100">
-      {/* Single fixed background = no seams */}
+    <div className="relative min-h-screen w-full bg-ink-900 text-slate-100">
       <Background />
-      <Aurora className="pointer-events-none absolute inset-0 opacity-60" />
+      <Aurora className="absolute inset-0 pointer-events-none -z-40 opacity-60" />
 
-      <div className="relative z-10 grid grid-cols-[240px,1fr] md:grid-cols-[260px,1fr]">
+      {/* Two-column app grid */}
+      <div className="relative z-0 grid grid-cols-[240px,1fr] md:grid-cols-[260px,1fr]">
         {/* Left rail */}
         <aside className="sticky top-0 z-30 hidden min-h-screen border-r border-white/10 sm:block">
           <LeftRail />
         </aside>
 
+        {/* Right column */}
         <div className="min-h-screen">
-          {/* STICKY header (centered) */}
+          {/* HEADER — first in the column, sticky, above content */}
           <header
             className={[
-              "sticky top-0 z-20 border-b backdrop-blur transition-colors duration-300 supports-[backdrop-filter]:bg-white/0",
+              "sticky top-0 z-40 border-b backdrop-blur transition-colors duration-300 supports-[backdrop-filter]:bg-white/0",
               scrolled ? "bg-white/[0.06] border-white/15" : "bg-white/[0.00] border-white/10",
             ].join(" ")}
           >
@@ -101,7 +90,7 @@ export default function AppShell({ children }: React.PropsWithChildren) {
             </div>
           </header>
 
-          {/* Page content */}
+          {/* PAGE CONTENT */}
           <main className="sg-container py-6">{children}</main>
         </div>
       </div>

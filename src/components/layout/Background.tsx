@@ -1,16 +1,12 @@
 "use client";
 
 export default function Background() {
-  // One fixed, full-viewport gradient that never scrolls = no seams
   return (
     <div
       aria-hidden
-      className="pointer-events-none fixed inset-0 -z-10"
+      className="pointer-events-none fixed inset-0 -z-50"  // <- push way behind
     >
-      {/* Base tint */}
       <div className="absolute inset-0 bg-[#0b1220]" />
-
-      {/* Soft radial glow center-top */}
       <div
         className="absolute inset-0"
         style={{
@@ -18,8 +14,6 @@ export default function Background() {
             "radial-gradient(1200px 600px at 50% -10%, rgba(98,54,255,0.18), transparent 60%)",
         }}
       />
-
-      {/* Aurora sweep bottom-left to top-right */}
       <div
         className="absolute inset-0"
         style={{
