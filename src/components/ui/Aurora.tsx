@@ -8,12 +8,7 @@ export default function Aurora({ className, ...rest }: Props) {
     <div
       aria-hidden
       {...rest}
-      className={clsx(
-        "pointer-events-none absolute inset-0 -z-40", // <- behind content, cannot catch clicks
-        className
-      )}
-    >
-      {/* your aurora layers, canvas, svgs, etc. */}
-    </div>
+      className={clsx("absolute inset-0 -z-40 pointer-events-none", className)}
+    />
   );
 }

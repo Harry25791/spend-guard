@@ -2,10 +2,7 @@
 
 export default function Background() {
   return (
-    <div
-      aria-hidden
-      className="pointer-events-none fixed inset-0 -z-50"  // <- push way behind
-    >
+    <div aria-hidden className="fixed inset-0 -z-50 pointer-events-none">
       <div className="absolute inset-0 bg-[#0b1220]" />
       <div
         className="absolute inset-0"
