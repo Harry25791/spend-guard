@@ -11,6 +11,9 @@
   --cyan: #22d3ee;
 }
 
+:root { --brand-icon: 40px; } /* change to 20px, 28px, etc. */
+:root { --hdr-title-size: 1.5rem; } /* 18px; bump to 1.25rem (20px) or 1.375rem (22px) */
+
 html,
 body {
   height: 100%;

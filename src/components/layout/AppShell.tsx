@@ -6,9 +6,10 @@ import RangePicker from "@/components/ui/RangePicker";
 import { getViewScope, setViewScope, type ViewScope } from "@/lib/io";
 import Background from "../layout/Background";
 import { GlobalAlertsModal } from "@/components/modals/AlertsModal";
+import { usePathname } from "next/navigation";
 
 export default function AppShell({ children }: React.PropsWithChildren) {
-  // header scope
+  // ── scope in header
   const [scope, setScopeState] = useState<ViewScope>("month");
   useEffect(() => { try { setScopeState(getViewScope()); } catch {} }, []);
   const setScope = (s: ViewScope) => {
@@ -17,16 +18,13 @@ export default function AppShell({ children }: React.PropsWithChildren) {
     window.dispatchEvent(new CustomEvent("sg:scope-change", { detail: { scope: s } }));
   };
 
-  // dynamic rail/header measurements so offsets are always correct
+  // ── dynamic rail/header measurements (CSS vars)
   const railRef = useRef<HTMLDivElement>(null);
   const hdrRef  = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const el = railRef.current;
-    if (!el) return;
-    const set = (w: number) => {
-      document.documentElement.style.setProperty("--rail-w", `${Math.round(w)}px`);
-    };
+    const el = railRef.current; if (!el) return;
+    const set = (w: number) => document.documentElement.style.setProperty("--rail-w", `${Math.round(w)}px`);
     set(el.offsetWidth);
     const ro = new (window as any).ResizeObserver((entries: any[]) => {
       const w = entries?.[0]?.contentRect?.width ?? el.offsetWidth;
@@ -37,11 +35,8 @@ export default function AppShell({ children }: React.PropsWithChildren) {
   }, []);
 
   useEffect(() => {
-    const el = hdrRef.current;
-    if (!el) return;
-    const set = () => {
-      document.documentElement.style.setProperty("--hdr-h", `${el.offsetHeight}px`);
-    };
+    const el = hdrRef.current; if (!el) return;
+    const set = () => document.documentElement.style.setProperty("--hdr-h", `${el.offsetHeight}px`);
     set();
     const ro = new (window as any).ResizeObserver(set);
     ro.observe(el);
@@ -49,7 +44,7 @@ export default function AppShell({ children }: React.PropsWithChildren) {
     return () => { ro.disconnect(); window.removeEventListener("resize", set); };
   }, []);
 
-  // over-limit dot + header tint on scroll (unchanged)
+  // ── over-limit dot + header tint on scroll
   const [over, setOver] = useState(false);
   useEffect(() => {
     try {
@@ -66,6 +61,24 @@ export default function AppShell({ children }: React.PropsWithChildren) {
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
+
+  // ── route-aware title + badge
+  const pathname = usePathname() || "/";
+  const first = `/${(pathname.split("/")[1] ?? "").toLowerCase()}`; // "/", "/projects", "/reports", "/settings"
+
+  const { title, icon } = (() => {
+    switch (first) {
+      case "/projects":
+        return { title: "Projects", icon: "/rail/ProjectsIcon.png" };
+      case "/reports":
+        return { title: "Reports", icon: "/rail/ReportsIcon.png" };
+      case "/settings":
+        return { title: "Settings", icon: "/rail/SettingsIcon.png" }; // name per your request
+      case "/":
+      default:
+        return { title: "SpendGuard", icon: "/rail/ShieldIcon.png" };
+    }
+  })();
 
   return (
     <div className="relative min-h-screen overflow-x-hidden">
@@ -93,16 +106,24 @@ export default function AppShell({ children }: React.PropsWithChildren) {
         }}
       >
         <div className="sg-container flex items-center justify-between py-4">
+          {/* Left: dynamic badge + title */}
           <div className="flex items-center gap-2">
             <img
-              src="/brand/SpendGuardBadge.png"
-              alt="SpendGuard"
-              className="hidden h-6 w-6 rounded-sm object-contain md:block"
+              src={icon}
+              alt={title}
+              className="hidden rounded-sm object-contain md:block"
+              style={{ width: "var(--brand-icon, 24px)", height: "var(--brand-icon, 24px)" }}
             />
-            <span className="text-base font-semibold tracking-tight">SpendGuard</span>
+            <span
+              className="font-semibold tracking-tight"
+              style={{ fontSize: "var(--hdr-title-size)" }}
+            >
+              {title}
+            </span>
             <span className="ml-2 text-xs text-slate-400">v0.2</span>
           </div>
 
+          {/* Right: scope + alerts */}
           <div className="flex items-center gap-3">
             <RangePicker value={scope} onChange={setScope} />
             <button
@@ -120,8 +141,7 @@ export default function AppShell({ children }: React.PropsWithChildren) {
         </div>
       </header>
 
-      {/* Content area sits to the right of the rail and is *that* width.
-          This is the key centering fix across all pages. */}
+      {/* Content area sits to the right of the rail and is *that* width */}
       <main
         className="relative z-20 min-w-0 py-6"
         style={{
@@ -130,10 +150,7 @@ export default function AppShell({ children }: React.PropsWithChildren) {
           paddingTop: "calc(var(--hdr-h, 56px) + 12px)",
         }}
       >
-        {/* The inner container does the real centering and max-width rails */}
-        <div className="sg-container">
-          {children}
-        </div>
+        <div className="sg-container">{children}</div>
       </main>
 
       <GlobalAlertsModal />
