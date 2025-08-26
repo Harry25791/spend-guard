@@ -6,7 +6,7 @@ import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 // UI
 import SGCard from "@/components/ui/SGCard";
 import KPIRow from "@/components/dashboard/KPIRow";
-import Image from "next/image";
+import HeroAvatar from "@/components/ui/HeroAvatar";
 
 // Charts (Free tier)
 import Timeline from "@/components/charts/Timeline";
@@ -38,8 +38,7 @@ const HERO_DVH = 86;   // % of viewport height the hero should occupy (was ~100)
 const HERO_GAP  = -160;   // px of space between the hero and the KPIs/charts
 
 // Optional: how early the charts reveal as you scroll off the hero
-// Use the same value where you set up the IntersectionObserver rootMargin, e.g. "-65%"
-const REVEAL_ROOT_MARGIN = "-15%"; 
+const REVEAL_ROOT_MARGIN = "-15%";
 
 type Project = ProjectType;
 
@@ -55,23 +54,14 @@ function HeroIntro() {
       aria-label="SpendGuard hero"
       className="relative mx-auto max-w-6xl px-6"
       style={{
-        // ↓ hero min height; subtract header height so the top never hides under it
-        //    raise/lower HERO_DVH to change the overall hero height
         minHeight: `calc(${HERO_DVH}dvh - var(--hdr-h, 64px))`,
-        // ↓ small, explicit gap beneath the hero before KPIs start
         marginBottom: `${HERO_GAP}px`,
-        // keep a touch of top padding so content doesn't stick to the header
         paddingTop: "0.5rem",
       }}
     >
       <div className="grid grid-cols-1 items-center gap-10 md:grid-cols-12">
         {/* TEXT (left) — nudge UP with negative translate */}
-        <div
-          className="md:col-span-6 md:pr-6 lg:pr-10 relative -translate-y-12 md:-translate-y-60"
-          // ↑ tweak these two values to adjust vertical position
-            //    small screens: -translate-y-6
-            //    md+:         -translate-y-10
-        >          
+        <div className="md:col-span-6 md:pr-6 lg:pr-10 relative -translate-y-12 md:-translate-y-60">
           <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs/5 text-white/70">
             <span className="inline-block h-4 w-4 rounded bg-white/10" />
             <span className="font-medium">SpendGuard</span>
@@ -87,60 +77,19 @@ function HeroIntro() {
           <div className="mt-10 text-sm text-white/60">Scroll to reveal insights ↓</div>
         </div>
 
-        {/* AVATAR (right) — same size & strong fade; adjust if desired */}
-        <div
-          className={
-            // ── POSITION (left/right) KNOBS:
-            // change justify-self-* to move the avatar horizontally within its grid column
-            //   - md:justify-self-start  → shift left
-            //   - md:justify-self-center → center (current on md)
-            //   - lg:justify-self-end    → shift right (current on lg)
-            "relative md:col-span-6 md:pl-6 lg:pl-10 md:justify-self-center lg:justify-self-end"
-          }
-        >
-          <div
-            className={
-              // ── SIZE KNOBS:
-              // w-[min(820px,60vw)] controls overall avatar size.
-              //   Increase 820px for a larger absolute cap on desktops.
-              //   Increase 60vw to let it use more of the viewport width.
-              // Optional: add responsive values, e.g. 'sm:w-[80vw] md:w-[min(760px,56vw)] lg:w-[min(880px,62vw)]'
-              //
-              // ── VERTICAL POSITION KNOB:
-              // add '-translate-y-?' (e.g., '-translate-y-4 md:-translate-y-6') here to move the avatar UP
-              // or 'translate-y-?' to move it DOWN.
-              "relative w-[min(860px,60vw)] aspect-[4/5] -translate-y-10 md:-translate-y-30"
-            }
-            style={{
-              // ── FADE STRENGTH KNOBS:
-              // linear-gradient(to bottom, black <start%>, transparent <end%>)
-              // smaller start%  → fade begins earlier (more aggressive)
-              // smaller end%    → fade finishes sooner (also more aggressive)
-              // e.g., black 52%, transparent 84% for a stronger fade.
-              // Fade strength: earlier start & earlier finish = more aggressive
-              WebkitMaskImage: "linear-gradient(to bottom, black 55%, rgba(0,0,0,0) 88%)",
-              maskImage: "linear-gradient(to bottom, black 55%, rgba(0,0,0,0) 88%)",
-            }}
-          >
-            <Image
-              src="/brand/SpendGuardAvatar.png"
-              alt="SpendGuard avatar"
-              fill
-              sizes="(min-width: 1024px) 60vw, 92vw"
-              // ── FIT KNOB:
-                // 'object-contain' preserves the full illustration.
-                // If you ever want it to crop to the frame, use 'object-cover'.
-              className="object-contain"
-              priority
-            />
-          </div>
-          {/*
-            ── EXTRA HORIZONTAL NUDGE (optional):
-            If justify-self-* isn’t enough, you can add a fine-grained nudge:
-              className="relative md:col-span-6 ... lg:translate-x-4"
-            Or negative to pull left:
-              lg:-translate-x-4
-          */}
+        {/* AVATAR (right) — shared component with unified translateY */}
+        <div className="relative md:col-span-6 md:pl-6 lg:pl-10 md:justify-self-center lg:justify-self-end">
+          <HeroAvatar
+            src="/brand/SpendGuardAvatar.png"
+            widthPx={860}
+            aspectRatio="4/5"
+            translateY={{ base: -10, md: -30 }}
+            maskStartPct={55}
+            maskEndPct={88}
+            sizes="(min-width: 1024px) 60vw, 92vw"
+            objectFit="contain"
+            priority
+          />
         </div>
       </div>
     </section>
@@ -327,7 +276,6 @@ export default function Home() {
           io.disconnect();
         }
       },
-      // use your knob here
       { root: null, threshold: 0, rootMargin: `0px 0px ${REVEAL_ROOT_MARGIN} 0px` }
     );
     io.observe(el);

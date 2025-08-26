@@ -141,3 +141,13 @@ body {
     filter: drop-shadow(0 0 60px rgba(138,77,255,.35));
   }
 }
+
+/* === Hero avatar vertical offset via CSS variables (Option B) === */
+.sg-hero-ty { transform: translateY(var(--ty, 0)); }
+
+@media (min-width: 768px) {
+  .md\:sg-hero-ty { transform: translateY(var(--ty-md, var(--ty, 0))); }
+}
+@media (min-width: 1024px) {
+  .lg\:sg-hero-ty { transform: translateY(var(--ty-lg, var(--ty-md, var(--ty, 0)))); }
+}
