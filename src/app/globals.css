@@ -112,3 +112,29 @@ body {
   pointer-events: none !important;
   z-index: 0 !important;
 }
+
+/* === Step 3 additions: Avatar blend (deframes the image & seats it into BG) === */
+@layer components {
+  .avatar-blend img {
+    /* Soft mask to remove the hard rectangular frame */
+    -webkit-mask-image: radial-gradient(68% 76% at 50% 50%, #000 72%, transparent 100%);
+            mask-image: radial-gradient(68% 76% at 50% 50%, #000 72%, transparent 100%);
+    /* Blend into the purple background and add a gentle glow */
+    mix-blend-mode: screen;
+    filter: drop-shadow(0 0 40px rgba(138,77,255,.28));
+  }
+}
+
+/* === Hero avatar image blend (PNG with dark BG → seamless) === */
+@layer components {
+  .hero-img img {
+    /* Feather the edges so the rectangle disappears */
+    -webkit-mask-image: radial-gradient(80% 95% at 70% 55%, #000 72%, transparent 100%);
+            mask-image: radial-gradient(80% 95% at 70% 55%, #000 72%, transparent 100%);
+    /* Blend the highlights over the dark background */
+    mix-blend-mode: screen;
+    opacity: 0.82;
+    /* Soft glow matching brand violet */
+    filter: drop-shadow(0 0 60px rgba(138,77,255,.35));
+  }
+}
