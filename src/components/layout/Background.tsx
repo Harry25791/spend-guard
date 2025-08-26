@@ -15,7 +15,7 @@ export default function Background() {
         }}
       />
 
-      {/* Gentle diagonal wash tuned for violet theme (replaces the truncated string) */}
+      {/* Gentle diagonal wash tuned for violet theme */}
       <div
         className="absolute inset-0"
         style={{

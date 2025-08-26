@@ -6,7 +6,6 @@ import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 // UI
 import SGCard from "@/components/ui/SGCard";
 import KPIRow from "@/components/dashboard/KPIRow";
-import SpendGuardAvatar from "@/components/branding/SpendGuardAvatar";
 import Image from "next/image";
 
 // Charts (Free tier)
@@ -34,6 +33,14 @@ import {
   rangeForScope,
 } from "@/lib/io";
 
+// ===== TUNING KNOBS (Dashboard hero) =====
+const HERO_DVH = 86;   // % of viewport height the hero should occupy (was ~100)
+const HERO_GAP  = -160;   // px of space between the hero and the KPIs/charts
+
+// Optional: how early the charts reveal as you scroll off the hero
+// Use the same value where you set up the IntersectionObserver rootMargin, e.g. "-65%"
+const REVEAL_ROOT_MARGIN = "-15%"; 
+
 type Project = ProjectType;
 
 function ClientOnly({ children }: { children: React.ReactNode }) {
@@ -42,45 +49,99 @@ function ClientOnly({ children }: { children: React.ReactNode }) {
   return <div suppressHydrationWarning>{mounted ? children : null}</div>;
 }
 
-/** Minimal hero that occupies the first viewport and gently fades into content. */
 function HeroIntro() {
   return (
     <section
       aria-label="SpendGuard hero"
-      className="relative grid min-h-[calc(100dvh-64px)] grid-cols-1 items-center gap-10 pt-4 md:grid-cols-12"
+      className="relative mx-auto max-w-6xl px-6"
+      style={{
+        // ↓ hero min height; subtract header height so the top never hides under it
+        //    raise/lower HERO_DVH to change the overall hero height
+        minHeight: `calc(${HERO_DVH}dvh - var(--hdr-h, 64px))`,
+        // ↓ small, explicit gap beneath the hero before KPIs start
+        marginBottom: `${HERO_GAP}px`,
+        // keep a touch of top padding so content doesn't stick to the header
+        paddingTop: "0.5rem",
+      }}
     >
-      {/* Title / copy (left) */}
-      <div className="md:col-span-7">
-        <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs/5 text-white/70">
-          <span className="inline-block h-4 w-4 rounded bg-white/10" />
-          <span className="font-medium">SpendGuard</span>
-          <span className="opacity-60">v0.2</span>
+      <div className="grid grid-cols-1 items-center gap-10 md:grid-cols-12">
+        {/* TEXT (left) — nudge UP with negative translate */}
+        <div
+          className="md:col-span-6 md:pr-6 lg:pr-10 relative -translate-y-12 md:-translate-y-60"
+          // ↑ tweak these two values to adjust vertical position
+            //    small screens: -translate-y-6
+            //    md+:         -translate-y-10
+        >          
+          <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs/5 text-white/70">
+            <span className="inline-block h-4 w-4 rounded bg-white/10" />
+            <span className="font-medium">SpendGuard</span>
+            <span className="opacity-60">v0.2</span>
+          </div>
+
+          <h1 className="text-4xl font-semibold tracking-tight text-white md:text-6xl">
+            SpendGuard
+          </h1>
+          <p className="mt-3 max-w-xl text-white/70">
+            Track token usage and spend at a glance.
+          </p>
+          <div className="mt-10 text-sm text-white/60">Scroll to reveal insights ↓</div>
         </div>
 
-        <h1 className="text-4xl font-semibold tracking-tight text-white md:text-6xl">SpendGuard</h1>
-        <p className="mt-3 max-w-xl text-white/70">Track token usage and spend at a glance.</p>
-
-        <div className="mt-10 text-sm text-white/60">Scroll to reveal insights ↓</div>
-      </div>
-
-      {/* Avatar / graphic placeholder (right) */}
-      <div className="relative md:col-span-5">
-        <div className="relative w-full aspect-[4/5] rounded-3xl border border-white/10 bg-white/5 shadow-[0_0_40px_rgba(138,77,255,0.25)] overflow-hidden">
-          <Image
-            src="/brand/SpendGuardAvatar.png"           // your PNG placeholder
-            alt="SpendGuard avatar"
-            fill
-            sizes="(min-width: 768px) 420px, 100vw"
-            className="object-cover"
-            priority
-          />
+        {/* AVATAR (right) — same size & strong fade; adjust if desired */}
+        <div
+          className={
+            // ── POSITION (left/right) KNOBS:
+            // change justify-self-* to move the avatar horizontally within its grid column
+            //   - md:justify-self-start  → shift left
+            //   - md:justify-self-center → center (current on md)
+            //   - lg:justify-self-end    → shift right (current on lg)
+            "relative md:col-span-6 md:pl-6 lg:pl-10 md:justify-self-center lg:justify-self-end"
+          }
+        >
+          <div
+            className={
+              // ── SIZE KNOBS:
+              // w-[min(820px,60vw)] controls overall avatar size.
+              //   Increase 820px for a larger absolute cap on desktops.
+              //   Increase 60vw to let it use more of the viewport width.
+              // Optional: add responsive values, e.g. 'sm:w-[80vw] md:w-[min(760px,56vw)] lg:w-[min(880px,62vw)]'
+              //
+              // ── VERTICAL POSITION KNOB:
+              // add '-translate-y-?' (e.g., '-translate-y-4 md:-translate-y-6') here to move the avatar UP
+              // or 'translate-y-?' to move it DOWN.
+              "relative w-[min(860px,60vw)] aspect-[4/5] -translate-y-10 md:-translate-y-30"
+            }
+            style={{
+              // ── FADE STRENGTH KNOBS:
+              // linear-gradient(to bottom, black <start%>, transparent <end%>)
+              // smaller start%  → fade begins earlier (more aggressive)
+              // smaller end%    → fade finishes sooner (also more aggressive)
+              // e.g., black 52%, transparent 84% for a stronger fade.
+              // Fade strength: earlier start & earlier finish = more aggressive
+              WebkitMaskImage: "linear-gradient(to bottom, black 55%, rgba(0,0,0,0) 88%)",
+              maskImage: "linear-gradient(to bottom, black 55%, rgba(0,0,0,0) 88%)",
+            }}
+          >
+            <Image
+              src="/brand/SpendGuardAvatar.png"
+              alt="SpendGuard avatar"
+              fill
+              sizes="(min-width: 1024px) 60vw, 92vw"
+              // ── FIT KNOB:
+                // 'object-contain' preserves the full illustration.
+                // If you ever want it to crop to the frame, use 'object-cover'.
+              className="object-contain"
+              priority
+            />
+          </div>
+          {/*
+            ── EXTRA HORIZONTAL NUDGE (optional):
+            If justify-self-* isn’t enough, you can add a fine-grained nudge:
+              className="relative md:col-span-6 ... lg:translate-x-4"
+            Or negative to pull left:
+              lg:-translate-x-4
+          */}
         </div>
-      </div>
-
-      {/* Subtle bottom fade to help the handoff */}
-      <div className="pointer-events-none absolute -bottom-px left-0 right-0">
-        <div className="h-8 bg-gradient-to-b from-transparent to-black/10" />
-        <div className="h-px bg-white/10" />
       </div>
     </section>
   );
@@ -91,9 +152,7 @@ export default function Home() {
   // Scope (synced with header)
   const [scope, setScopeState] = useState<ViewScope>("month");
   useEffect(() => {
-    try {
-      setScopeState(getViewScope());
-    } catch {}
+    try { setScopeState(getViewScope()); } catch {}
   }, []);
   useEffect(() => {
     const onScope = (e: any) => {
@@ -109,14 +168,6 @@ export default function Home() {
     window.dispatchEvent(new CustomEvent("sg:scope-change", { detail: { scope: s } }));
   }, []);
 
-  // Alerts modal relay from header
-  const [isAlertsOpen, setIsAlertsOpen] = useState(false);
-  useEffect(() => {
-    const open = () => setIsAlertsOpen(true);
-    window.addEventListener("sg:open-alerts", open as EventListener);
-    return () => window.removeEventListener("sg:open-alerts", open as EventListener);
-  }, []);
-
   // ────────────────────────────────────────────────────────────────────────────
   // Projects
   const [projects, setProjects] = useState<Project[]>(() => {
@@ -129,7 +180,7 @@ export default function Home() {
   const [hydrated, setHydrated] = useState(false);
   useEffect(() => setHydrated(true), []);
 
-  // Cross‑tab resync
+  // Cross-tab resync
   useEffect(() => {
     const resync = () => {
       const stored = localStorage.getItem("projects");
@@ -166,26 +217,21 @@ export default function Home() {
     if (typeof window === "undefined") return;
     const prev = localStorage.getItem("settings");
     let merged: any = {};
-    try {
-      merged = prev ? JSON.parse(prev) : {};
-    } catch {}
+    try { merged = prev ? JSON.parse(prev) : {}; } catch {}
     merged.alertsEnabled = settings.alertsEnabled;
     merged.monthlyLimitUsd = settings.monthlyLimitUsd;
     merged.overLimit = settings.overLimit;
     localStorage.setItem("settings", JSON.stringify(merged));
   }, [settings]);
 
-  // Provider labels (lifetime) – used by some charts/components
+  // Provider labels (lifetime)
   const [providerLabels, setProviderLabels] = useState<Record<string, string>>({});
   useEffect(() => {
     localStorage.setItem("projects", JSON.stringify(projects));
     const providerMap: Record<string, string> = {};
     for (const p of projects) {
       const raw = localStorage.getItem(`entries-${p.id}`);
-      if (!raw) {
-        providerMap[p.id] = "—";
-        continue;
-      }
+      if (!raw) { providerMap[p.id] = "—"; continue; }
       try {
         const entries: { provider?: string }[] = JSON.parse(raw);
         const set = new Set(
@@ -195,9 +241,7 @@ export default function Home() {
             .map((v) => v.toLowerCase()),
         );
         providerMap[p.id] = set.size === 0 ? "—" : set.size === 1 ? Array.from(set)[0] : "Multiple Providers";
-      } catch {
-        providerMap[p.id] = "—";
-      }
+      } catch { providerMap[p.id] = "—"; }
     }
     setProviderLabels(providerMap);
   }, [projects]);
@@ -260,9 +304,7 @@ export default function Home() {
   const overLimitActive =
     hydrated && settings.alertsEnabled && settings.monthlyLimitUsd > 0 && monthTotal > settings.monthlyLimitUsd;
 
-  useEffect(() => {
-    setSettings((s) => ({ ...s, overLimit: overLimitActive }));
-  }, [overLimitActive]);
+  useEffect(() => { setSettings((s) => ({ ...s, overLimit: overLimitActive })); }, [overLimitActive]);
 
   const limitText =
     settings.monthlyLimitUsd > 0
@@ -272,7 +314,7 @@ export default function Home() {
       : "No limit set";
 
   // ────────────────────────────────────────────────────────────────────────────
-  // Reveal after hero scroll
+  // Reveal after hero scroll (SLOW, DELAYED STAGGER)
   const sentinelRef = useRef<HTMLDivElement>(null);
   const [reveal, setReveal] = useState(false);
   useEffect(() => {
@@ -280,16 +322,17 @@ export default function Home() {
     if (!el) return;
     const io = new IntersectionObserver(
       (entries) => {
-        const e = entries[0];
-        if (!e.isIntersecting) setReveal(true); // triggers once hero is scrolled past
+        if (entries[0].isIntersecting) {
+          setReveal(true);
+          io.disconnect();
+        }
       },
-      { root: null, threshold: 0.01 },
+      // use your knob here
+      { root: null, threshold: 0, rootMargin: `0px 0px ${REVEAL_ROOT_MARGIN} 0px` }
     );
     io.observe(el);
     return () => io.disconnect();
   }, []);
-
-  // helper for stagger (slower / delayed)
   const revealClass = (idx: number) =>
     `transition-all duration-[900ms] ease-out will-change-transform ${
       reveal ? "opacity-100 translate-y-0" : "opacity-0 translate-y-6"
@@ -300,15 +343,13 @@ export default function Home() {
   return (
     <>
       {/* HERO (first paint) */}
-      <div className="mx-auto max-w-6xl px-6">
-        <HeroIntro />
-      </div>
+      <HeroIntro />
 
-      {/* Sentinel placed right after hero to trigger reveal when hero is scrolled past */}
+      {/* Sentinel right after hero to trigger reveal */}
       <div ref={sentinelRef} aria-hidden className="h-px w-full" />
 
       {/* DASHBOARD (reveals after scroll) */}
-      <div className="mx-auto max-w-6xl px-6 space-y-6">
+      <div className="space-y-6">
         {/* KPI Row */}
         <div className={revealClass(1)}>
           <ClientOnly>
@@ -357,7 +398,7 @@ export default function Home() {
               </SGCard>
 
               <SGCard className="lg:col-span-2">
-                <h3 className="mb-2 text-sm font-semibold text-slate-2 00">
+                <h3 className="mb-2 text-sm font-semibold text-slate-200">
                   Entry size distribution — {labelForScope(scope)}
                 </h3>
                 <EntryHistogram entries={flatEntries} metric="tokens" />
@@ -366,99 +407,77 @@ export default function Home() {
           </ClientOnly>
         </div>
 
-        {/* Controls: filtered exports, full backup, import, clear */}
+        {/* Controls: filtered exports, full backup, import, clear (glassy buttons) */}
         <div className={revealClass(4)}>
           <ClientOnly>
-          <div className="flex flex-wrap items-center justify-between pt-2">
-            <div className="text-sm text-slate-400">
-              Scope: <span className="text-slate-200">{labelForScope(scope)}</span> (set in header)
-            </div>
+            <div className="flex flex-wrap items-center justify-between pt-2">
+              <div className="text-sm text-slate-400">
+                Scope: <span className="text-slate-200">{labelForScope(scope)}</span> (set in header)
+              </div>
 
-            <div className="flex gap-3">
-              <button
-                onClick={() => downloadFilteredCSV(scope)}
-                className="rounded-lg bg-emerald-600 px-4 py-2 transition hover:bg-emerald-500"
-              >
-                Export CSV — {labelForScope(scope)}
-              </button>
-              <button
-                onClick={() => downloadFilteredJSON(scope)}
-                className="rounded-lg bg-emerald-600 px-4 py-2 transition hover:bg-emerald-500"
-              >
-                Export JSON — {labelForScope(scope)}
-              </button>
-              <button
-                onClick={() => downloadExport()}
-                className="rounded-lg bg-indigo-600 px-4 py-2 transition hover:bg-indigo-500"
-                title="Full backup (all data, versioned JSON)"
-              >
-                Full Backup (JSON v2)
-              </button>
-
-              <label className="cursor-pointer rounded-lg bg-indigo-600 px-4 py-2 transition hover:bg-indigo-500">
-                Import JSON
-                <input type="file" accept="application/json" onChange={async (ev) => {
-                  const file = ev.target.files?.[0];
-                  if (!file) return;
-                  try {
-                    const text = await file.text();
-                    const res = importAll(text, "merge");
-                    alert(
-                      `Import complete.\nProjects: ${res.projects}\nEntries: ${res.entries}${
-                        res.warnings.length ? `\nWarnings:\n- ${res.warnings.join("\n- ")}` : ""
-                      }`,
-                    );
-                    location.reload();
-                  } catch (err: any) {
-                    alert(`Import failed: ${err?.message || String(err)}`);
-                  } finally {
-                    ev.target.value = "";
-                  }
-                }} className="hidden" />
-              </label>
-
-              {projects.length > 0 && (
-                <button
-                  onClick={() => {
-                    if (window.confirm("Are you sure you want to clear all projects?")) {
-                      setProjects([]);
-                      Object.keys(localStorage).forEach((key) => {
-                        if (key.startsWith("entries-")) localStorage.removeItem(key);
-                      });
-                      localStorage.removeItem("projects");
-                    }
-                  }}
-                  className="rounded-lg bg-rose-600 px-4 py-2 transition hover:bg-rose-500"
-                >
-                  Clear All Projects
+              <div className="flex flex-wrap gap-3">
+                <button onClick={() => downloadFilteredCSV(scope)} className="btn btn-outline btn-sm">
+                  Export CSV — {labelForScope(scope)}
                 </button>
-              )}
+                <button onClick={() => downloadFilteredJSON(scope)} className="btn btn-outline btn-sm">
+                  Export JSON — {labelForScope(scope)}
+                </button>
+                <button
+                  onClick={() => downloadExport()}
+                  className="btn btn-sm"
+                  title="Full backup (all data, versioned JSON)"
+                >
+                  Full Backup (JSON v2)
+                </button>
+
+                <label className="btn btn-sm cursor-pointer">
+                  Import JSON
+                  <input
+                    type="file"
+                    accept="application/json"
+                    onChange={async (ev) => {
+                      const file = ev.target.files?.[0];
+                      if (!file) return;
+                      try {
+                        const text = await file.text();
+                        const res = importAll(text, "merge");
+                        alert(
+                          `Import complete.\nProjects: ${res.projects}\nEntries: ${res.entries}${
+                            res.warnings.length ? `\nWarnings:\n- ${res.warnings.join("\n- ")}` : ""
+                          }`,
+                        );
+                        location.reload();
+                      } catch (err: any) {
+                        alert(`Import failed: ${err?.message || String(err)}`);
+                      } finally {
+                        ev.target.value = "";
+                      }
+                    }}
+                    className="hidden"
+                  />
+                </label>
+
+                {projects.length > 0 && (
+                  <button
+                    onClick={() => {
+                      if (window.confirm("Are you sure you want to clear all projects?")) {
+                        setProjects([]);
+                        Object.keys(localStorage).forEach((key) => {
+                          if (key.startsWith("entries-")) localStorage.removeItem(key);
+                        });
+                        localStorage.removeItem("projects");
+                      }
+                    }}
+                    className="btn btn-danger btn-sm"
+                  >
+                    Clear All Projects
+                  </button>
+                )}
+              </div>
             </div>
-          </div>
           </ClientOnly>
         </div>
       </div>
-
-      {/* Alerts Settings Modal */}
-      {isAlertsOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/50" onClick={() => setIsAlertsOpen(false)} />
-          <div className="relative z-10 w-full max-w-md rounded-2xl border border-white/10 bg-[#0f172a] p-5 shadow-xl">
-            <div className="mb-3 flex items-center justify-between">
-              <h3 className="text-base font-semibold">Alerts</h3>
-              <button
-                onClick={() => setIsAlertsOpen(false)}
-                className="rounded-md px-2 py-1 text-slate-300 hover:bg-white/10"
-                aria-label="Close alerts settings"
-              >
-                ✕
-              </button>
-            </div>
-
-            {/* Modal content unchanged... */}
-          </div>
-        </div>
-      )}
     </>
   );
 }
