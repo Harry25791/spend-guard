@@ -10,8 +10,9 @@ import HeroAvatar from "@/components/ui/HeroAvatar";
    Adjust these safely without affecting Home.
 ----------------------------------------------------------------------------- */
 const HERO_MIN_VH = 70;              // hero min height as % of viewport height (minus header)
-const FORM_OFFSET_Y = -360;             // px to nudge the Add Project card up/down
-const STAGGER_TRIGGER_PCT = 0.20;    // how far you scroll past the hero before table reveals (0..1)
+const FORM_OFFSET_Y = -360;          // px to nudge the Add Project card up/down
+const STAGGER_TRIGGER_PCT = 0.001;   // how far you scroll past the hero before table reveals (0..1)
+const HERO_GAP = -160;               // px space between hero and table (negative closes gap)
 
 // Use a DIFFERENT image from Home if you like:
 const AVATAR_SRC = "/brand/SpendGuardAvatar.png"; // e.g. "/brand/SpendGuardAvatarProjects.png"
@@ -36,6 +37,16 @@ export default function ProjectsPage() {
       window.removeEventListener("focus", onFocus);
       window.removeEventListener("visibilitychange", onFocus);
     };
+  }, []);
+
+  // 🔧 NEW: live updates when RangePicker changes scope in the header
+  useEffect(() => {
+    const onScope = (e: any) => {
+      const v = e?.detail?.scope as ViewScope | undefined;
+      if (v) setScope(v);
+    };
+    window.addEventListener("sg:scope-change", onScope as EventListener);
+    return () => window.removeEventListener("sg:scope-change", onScope as EventListener);
   }, []);
 
   /* Hydration guard to avoid SSR/CSR mismatch */
@@ -154,7 +165,7 @@ export default function ProjectsPage() {
         className="relative"
         style={{
           minHeight: `calc(${HERO_MIN_VH}dvh - var(--hdr-h, 64px))`,
-          marginBottom: "28px",
+          marginBottom: `${HERO_GAP}px`,
           paddingTop: "0.5rem",
         }}
       >
@@ -162,8 +173,8 @@ export default function ProjectsPage() {
           {/* AVATAR (left) — shared HeroAvatar + CSS-var Y offset (Option B) */}
           <div className="relative md:col-span-6 md:pr-6 lg:pr-10 md:justify-self-start">
             <HeroAvatar
-              src="/brand/SpendGuardAvatar.png"
-              widthPx={860}
+              src="/brand/SpendGuardAvatarSide.png"
+              widthPx={800}
               aspectRatio="4/5"
               translateY={{ base: -10, md: -30 }}   // raise/lower here
               maskStartPct={55}
