@@ -1,3 +1,4 @@
+// src/app/projects/page.tsx
 "use client";
 
 import { useEffect, useMemo, useRef, useState, Fragment } from "react";
@@ -5,6 +6,7 @@ import Link from "next/link";
 import { getViewScope, labelForScope, type ViewScope, filterByScope } from "@/lib/io";
 import { loadEntries, type EntryV2 } from "@/lib/storage";
 import HeroAvatar from "@/components/ui/HeroAvatar";
+import { Button } from "@/components/ui/Buttons"; // ← ADDED
 
 /* ───────────────────────── Tunables (local to this page) ─────────────────────────
    Adjust these safely without affecting Home.
@@ -203,12 +205,9 @@ export default function ProjectsPage() {
                   onChange={(e) => setName(e.target.value)}
                   className="flex-1 rounded-lg bg-white/10 border border-white/10 px-3 py-2 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-500/60"
                 />
-                <button
-                  type="submit"
-                  className="rounded-lg px-4 py-2 bg-white/10 border border-white/10 hover:bg-white/15 active:bg-white/20 transition"
-                >
+                <Button type="submit">
                   Add Project
-                </button>
+                </Button>
               </form>
             </div>
           </div>
@@ -264,18 +263,21 @@ export default function ProjectsPage() {
                         ${(totalsByProject[p.id]?.total ?? 0).toFixed(2)}
                       </td>
                       <td className="px-5 py-3 text-center">
-                        <button
+                        <Button
+                          size="sm"
+                          variant="ghost"
                           onClick={() => toggleSummary(p.id)}
-                          className="rounded-md px-3 py-1.5 bg-slate-700/50 hover:bg-slate-700 transition"
                         >
                           {openSummaries.includes(p.id) ? "Hide summary" : "Summary"}
-                        </button>
-                        <button
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="danger"
+                          className="ml-2"
                           onClick={() => deleteProject(p.id)}
-                          className="ml-2 rounded-md px-3 py-1.5 bg-white/10 border border-white/10 hover:bg-white/15 transition"
                         >
                           Delete
-                        </button>
+                        </Button>
                       </td>
                     </tr>
 

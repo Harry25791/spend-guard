@@ -7,6 +7,7 @@ import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import SGCard from "@/components/ui/SGCard";
 import KPIRow from "@/components/dashboard/KPIRow";
 import HeroAvatar from "@/components/ui/HeroAvatar";
+import { Button } from "@/components/ui/Buttons"; // ← ADDED
 
 // Charts (Free tier)
 import Timeline from "@/components/charts/Timeline";
@@ -34,10 +35,8 @@ import {
 } from "@/lib/io";
 
 // ===== TUNING KNOBS (Dashboard hero) =====
-const HERO_DVH = 86;   // % of viewport height the hero should occupy (was ~100)
-const HERO_GAP  = -160;   // px of space between the hero and the KPIs/charts
-
-// Optional: how early the charts reveal as you scroll off the hero
+const HERO_DVH = 86;
+const HERO_GAP  = -160;
 const REVEAL_ROOT_MARGIN = "-15%";
 
 type Project = ProjectType;
@@ -60,7 +59,7 @@ function HeroIntro() {
       }}
     >
       <div className="grid grid-cols-1 items-center gap-10 md:grid-cols-12">
-        {/* TEXT (left) — nudge UP with negative translate */}
+        {/* TEXT (left) */}
         <div className="md:col-span-6 md:pr-6 lg:pr-10 relative -translate-y-12 md:-translate-y-60">
           <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs/5 text-white/70">
             <span className="inline-block h-4 w-4 rounded bg-white/10" />
@@ -77,7 +76,7 @@ function HeroIntro() {
           <div className="mt-10 text-sm text-white/60">Scroll to reveal insights ↓</div>
         </div>
 
-        {/* AVATAR (right) — shared component with unified translateY */}
+        {/* AVATAR (right) */}
         <div className="relative md:col-span-6 md:pl-6 lg:pl-10 md:justify-self-center lg:justify-self-end">
           <HeroAvatar
             src="/brand/SpendGuardAvatar.png"
@@ -97,7 +96,6 @@ function HeroIntro() {
 }
 
 export default function Home() {
-  // ────────────────────────────────────────────────────────────────────────────
   // Scope (synced with header)
   const [scope, setScopeState] = useState<ViewScope>("month");
   useEffect(() => {
@@ -117,7 +115,6 @@ export default function Home() {
     window.dispatchEvent(new CustomEvent("sg:scope-change", { detail: { scope: s } }));
   }, []);
 
-  // ────────────────────────────────────────────────────────────────────────────
   // Projects
   const [projects, setProjects] = useState<Project[]>(() => {
     if (typeof window === "undefined") return [];
@@ -129,7 +126,6 @@ export default function Home() {
   const [hydrated, setHydrated] = useState(false);
   useEffect(() => setHydrated(true), []);
 
-  // Cross-tab resync
   useEffect(() => {
     const resync = () => {
       const stored = localStorage.getItem("projects");
@@ -262,8 +258,7 @@ export default function Home() {
         : `Remaining $${(settings.monthlyLimitUsd - monthTotal).toFixed(2)}`
       : "No limit set";
 
-  // ────────────────────────────────────────────────────────────────────────────
-  // Reveal after hero scroll (SLOW, DELAYED STAGGER)
+  // Reveal after hero scroll
   const sentinelRef = useRef<HTMLDivElement>(null);
   const [reveal, setReveal] = useState(false);
   useEffect(() => {
@@ -286,17 +281,19 @@ export default function Home() {
       reveal ? "opacity-100 translate-y-0" : "opacity-0 translate-y-6"
     } [transition-delay:${Math.min(1200 + idx * 140, 2400)}ms]`;
 
-  // ────────────────────────────────────────────────────────────────────────────
+  // Ref for Import JSON (used only for the button -> hidden input trigger)
+  const importInputRef = useRef<HTMLInputElement>(null); // ← ADDED
+
   // Render
   return (
     <>
-      {/* HERO (first paint) */}
+      {/* HERO */}
       <HeroIntro />
 
-      {/* Sentinel right after hero to trigger reveal */}
+      {/* Sentinel */}
       <div ref={sentinelRef} aria-hidden className="h-px w-full" />
 
-      {/* DASHBOARD (reveals after scroll) */}
+      {/* DASHBOARD */}
       <div className="space-y-6">
         {/* KPI Row */}
         <div className={revealClass(1)}>
@@ -355,7 +352,7 @@ export default function Home() {
           </ClientOnly>
         </div>
 
-        {/* Controls: filtered exports, full backup, import, clear (glassy buttons) */}
+        {/* Controls: filtered exports, full backup, import, clear */}
         <div className={revealClass(4)}>
           <ClientOnly>
             <div className="flex flex-wrap items-center justify-between pt-2">
@@ -364,49 +361,65 @@ export default function Home() {
               </div>
 
               <div className="flex flex-wrap gap-3">
-                <button onClick={() => downloadFilteredCSV(scope)} className="btn btn-outline btn-sm">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => downloadFilteredCSV(scope)}
+                >
                   Export CSV — {labelForScope(scope)}
-                </button>
-                <button onClick={() => downloadFilteredJSON(scope)} className="btn btn-outline btn-sm">
+                </Button>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => downloadFilteredJSON(scope)}
+                >
                   Export JSON — {labelForScope(scope)}
-                </button>
-                <button
+                </Button>
+
+                <Button
+                  size="sm"
                   onClick={() => downloadExport()}
-                  className="btn btn-sm"
                   title="Full backup (all data, versioned JSON)"
                 >
                   Full Backup (JSON v2)
-                </button>
+                </Button>
 
-                <label className="btn btn-sm cursor-pointer">
+                <Button
+                  size="sm"
+                  onClick={() => importInputRef.current?.click()}
+                >
                   Import JSON
-                  <input
-                    type="file"
-                    accept="application/json"
-                    onChange={async (ev) => {
-                      const file = ev.target.files?.[0];
-                      if (!file) return;
-                      try {
-                        const text = await file.text();
-                        const res = importAll(text, "merge");
-                        alert(
-                          `Import complete.\nProjects: ${res.projects}\nEntries: ${res.entries}${
-                            res.warnings.length ? `\nWarnings:\n- ${res.warnings.join("\n- ")}` : ""
-                          }`,
-                        );
-                        location.reload();
-                      } catch (err: any) {
-                        alert(`Import failed: ${err?.message || String(err)}`);
-                      } finally {
-                        ev.target.value = "";
-                      }
-                    }}
-                    className="hidden"
-                  />
-                </label>
+                </Button>
+                <input
+                  ref={importInputRef}
+                  type="file"
+                  accept="application/json"
+                  onChange={async (ev) => {
+                    const file = ev.target.files?.[0];
+                    if (!file) return;
+                    try {
+                      const text = await file.text();
+                      const res = importAll(text, "merge");
+                      alert(
+                        `Import complete.\nProjects: ${res.projects}\nEntries: ${res.entries}${
+                          res.warnings.length ? `\nWarnings:\n- ${res.warnings.join("\n- ")}` : ""
+                        }`,
+                      );
+                      location.reload();
+                    } catch (err: any) {
+                      alert(`Import failed: ${err?.message || String(err)}`);
+                    } finally {
+                      ev.target.value = "";
+                    }
+                  }}
+                  className="hidden"
+                />
 
                 {projects.length > 0 && (
-                  <button
+                  <Button
+                    variant="danger"
+                    size="sm"
                     onClick={() => {
                       if (window.confirm("Are you sure you want to clear all projects?")) {
                         setProjects([]);
@@ -416,10 +429,9 @@ export default function Home() {
                         localStorage.removeItem("projects");
                       }
                     }}
-                    className="btn btn-danger btn-sm"
                   >
                     Clear All Projects
-                  </button>
+                  </Button>
                 )}
               </div>
             </div>

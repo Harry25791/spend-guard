@@ -1,3 +1,4 @@
+// src/components/layout/AppShell.tsx
 "use client";
 import React, { useEffect, useRef, useState } from "react";
 import LeftRail from "./LeftRail";
@@ -7,6 +8,7 @@ import { getViewScope, setViewScope, type ViewScope } from "@/lib/io";
 import Background from "../layout/Background";
 import { GlobalAlertsModal } from "@/components/modals/AlertsModal";
 import { usePathname } from "next/navigation";
+import { Button } from "@/components/ui/Buttons"; // ← ADDED
 
 export default function AppShell({ children }: React.PropsWithChildren) {
   // ── scope in header
@@ -126,17 +128,23 @@ export default function AppShell({ children }: React.PropsWithChildren) {
           {/* Right: scope + alerts */}
           <div className="flex items-center gap-3">
             <RangePicker value={scope} onChange={setScope} />
-            <button
+
+            {/* PATCH: use shared Button for the bell */}
+            <Button
               type="button"
               aria-label="Alerts"
-              className="btn btn-ghost btn-sm relative"
+              variant="ghost"
+              size="sm"
+              className="relative"
               onClick={() => window.dispatchEvent(new CustomEvent("sg:open-alerts"))}
             >
               <svg viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5" aria-hidden>
                 <path d="M12 2a6 6 0 00-6 6v2.27c0 .52-.21.99-.55 1.33L3.88 13.16A1.94 1.94 0 005 16h14a1.94 1.94 0 001.12-3.54l-1.56-1.56c-.34-.34-.56-.81-.56-1.33V8a6 6 0 00-6-6zm0 20a3 3 0 01-3-3h6a3 3 0 01-3 3z" />
               </svg>
-              {over && <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-rose-500 ring-2 ring-ink-900" />}
-            </button>
+              {over && (
+                <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-rose-500 ring-2 ring-ink-900" />
+              )}
+            </Button>
           </div>
         </div>
       </header>
