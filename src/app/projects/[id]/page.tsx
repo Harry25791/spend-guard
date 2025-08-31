@@ -9,6 +9,7 @@ import Link from "next/link";
 import SGCard from "@/components/ui/SGCard";
 import PieByModel from "@/components/charts/PieByModel";
 import MiniLine from "@/components/charts/MiniLine";
+import { Button } from "@/components/ui/Buttons";
 
 // Data
 import { loadEntries, saveEntries, type EntryV2 } from "@/lib/storage";
@@ -312,7 +313,7 @@ export default function ProjectDetail() {
     [viewEntries]
   );
 
-    // KPI helpers
+  // KPI helpers
   const entriesCount = viewEntries.length;
 
   const avgCost = useMemo(() => {
@@ -341,7 +342,8 @@ export default function ProjectDetail() {
   return (
     <div className="space-y-6">
       <div>
-        <Link href="/" className="text-cyan-300 hover:text-cyan-200 underline decoration-cyan-500/40">
+        {/* FIX: Back to Projects goes to /projects (not /) */}
+        <Link href="/projects" className="text-cyan-300 hover:text-cyan-200 underline decoration-cyan-500/40">
           ← Back to Projects
         </Link>
         <h1 className="mt-2 text-2xl font-semibold tracking-tight">{name}</h1>
@@ -360,27 +362,30 @@ export default function ProjectDetail() {
         ]}
       />
 
-
       {/* Split layout: sticky Add Entry (left) + insights (right) */}
       <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
         {/* Add Entry Card (sticky) */}
         <SGCard className="md:col-span-5 lg:col-span-4 p-4 md:sticky md:top-24 h-fit">
           <div className="mb-3 flex items-center gap-2 text-sm">
             <span className="text-slate-400">Entry mode:</span>
-            <button
+            <Button
               type="button"
+              size="sm"
+              variant={!manualTokens ? "primary" : "ghost"}
+              aria-pressed={!manualTokens}
               onClick={() => setManualTokens(false)}
-              className={`rounded-md px-2.5 py-1 ${!manualTokens ? "bg-cyan-600 text-white" : "bg-slate-800/60 text-slate-200"} border border-white/10`}
             >
               Token Counter
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
+              size="sm"
+              variant={manualTokens ? "primary" : "ghost"}
+              aria-pressed={manualTokens}
               onClick={() => setManualTokens(true)}
-              className={`rounded-md px-2.5 py-1 ${manualTokens ? "bg-cyan-600 text-white" : "bg-slate-800/60 text-slate-200"} border border-white/10`}
             >
               Manual Tokens
-            </button>
+            </Button>
           </div>
 
           <form onSubmit={addEntry} className="flex flex-col gap-3">
@@ -463,12 +468,9 @@ export default function ProjectDetail() {
             )}
 
             {manualTokens && (
-              <button
-                type="submit"
-                className="rounded-lg px-4 py-2 bg-cyan-500 hover:bg-cyan-400 active:bg-cyan-600 transition shadow shadow-cyan-900/30"
-              >
+              <Button type="submit">
                 Add
-              </button>
+              </Button>
             )}
 
             {/* Rate hint */}
@@ -506,31 +508,32 @@ export default function ProjectDetail() {
                   <span className="mx-2">•</span>
                   Est. Cost: <span className="font-semibold text-cyan-300">${counterCost.toFixed(6)}</span>
                 </div>
-                <button
+                <Button
                   onClick={addEntryFromCounter}
                   disabled={counterTokens <= 0 || !effectiveRate}
-                  className="rounded-lg px-4 py-2 bg-cyan-500 hover:bg-cyan-400 disabled:opacity-50 disabled:cursor-not-allowed transition"
                 >
                   Add Entry from Text
-                </button>
+                </Button>
               </div>
             </div>
           )}
 
           {/* Exports */}
           <div className="mt-4 flex flex-wrap gap-2">
-            <button
+            <Button
+              variant="outline"
+              size="sm"
               onClick={() => downloadProjectCSV(String(projectId), name, provider, projectRate, viewEntries)}
-              className="rounded-lg px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-sm"
             >
               Export CSV — {labelForScope(scope)}
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
               onClick={() => downloadProjectJSON(String(projectId), name, provider, projectRate, viewEntries)}
-              className="rounded-lg px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-sm"
             >
               Export JSON — {labelForScope(scope)}
-            </button>
+            </Button>
           </div>
         </SGCard>
 
@@ -539,7 +542,7 @@ export default function ProjectDetail() {
           <SGCard className="p-4">
             <div className="flex items-center justify-between mb-2">
               <h3 className="text-sm font-semibold text-slate-200">
-                Per‑model breakdown — {labelForScope(scope)}
+                Per-model breakdown — {labelForScope(scope)}
               </h3>
               <span className="text-xs text-slate-400">by cost</span>
             </div>
@@ -641,18 +644,20 @@ export default function ProjectDetail() {
                   </td>
                   <td className="px-5 py-3 text-right">${e.cost.toFixed(6)}</td>
                   <td className="px-5 py-3 text-center space-x-2">
-                    <button
+                    <Button
+                      variant="ghost"
+                      size="sm"
                       onClick={() => startEdit(e)}
-                      className="rounded-md px-3 py-1.5 bg-cyan-600 hover:bg-cyan-500"
                     >
                       Edit
-                    </button>
-                    <button
+                    </Button>
+                    <Button
+                      variant="danger"
+                      size="sm"
                       onClick={() => deleteEntry(e.id as string)}
-                      className="rounded-md px-3 py-1.5 bg-rose-500 hover:bg-rose-400"
                     >
                       Delete
-                    </button>
+                    </Button>
                   </td>
                 </tr>
               ))
@@ -663,12 +668,12 @@ export default function ProjectDetail() {
 
       {entries.length > 0 && (
         <div className="flex justify-end pt-4">
-          <button
+          <Button
+            variant="danger"
             onClick={clearAllEntries}
-            className="rounded-lg px-4 py-2 bg-rose-600 hover:bg-rose-500 transition"
           >
             Clear All Entries
-          </button>
+          </Button>
         </div>
       )}
 
@@ -781,12 +786,12 @@ export default function ProjectDetail() {
             </div>
 
             <div className="mt-5 flex items-center justify-end gap-2">
-              <button onClick={cancelEdit} className="rounded-md px-3 py-1.5 bg-slate-600 hover:bg-slate-500">
+              <Button variant="ghost" onClick={cancelEdit}>
                 Cancel
-              </button>
-              <button onClick={saveEdit} className="rounded-md px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500">
+              </Button>
+              <Button onClick={saveEdit}>
                 Save
-              </button>
+              </Button>
             </div>
           </div>
         </div>

@@ -1,7 +1,8 @@
+// src/components/modals/AlertsModal.tsx
 "use client";
 
-import Link from "next/link";
 import React, { useEffect, useMemo, useState } from "react";
+import { Button, ButtonLink } from "@/components/ui/Buttons";
 
 type AlertsModalProps = {
   open: boolean;
@@ -87,12 +88,9 @@ export default function AlertsModal({ open, onClose }: AlertsModalProps) {
       <div className="relative z-10 w-full max-w-md rounded-2xl border border-white/10 bg-[#0f172a] p-5 shadow-xl">
         <div className="mb-3 flex items-center justify-between">
           <h3 className="text-sm font-semibold">Alerts</h3>
-          <button
-            onClick={onClose}
-            className="rounded-md px-2 py-1 text-slate-300 hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-400/60"
-          >
+          <Button variant="ghost" size="sm" onClick={onClose} aria-label="Close">
             ✕
-          </button>
+          </Button>
         </div>
 
         <div className="space-y-2 text-sm">
@@ -116,9 +114,9 @@ export default function AlertsModal({ open, onClose }: AlertsModalProps) {
           )}
 
           <div className="pt-2">
-            <Link href="/settings" className="btn btn-outline btn-sm">
+            <ButtonLink href="/settings" variant="outline" size="sm">
               Open Settings
-            </Link>
+            </ButtonLink>
           </div>
         </div>
       </div>
