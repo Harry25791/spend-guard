@@ -20,6 +20,7 @@
     "agent:run": "pnpm agent:context && pnpm agent:plan && pnpm agent:impl && pnpm agent:check"
   },
   "dependencies": {
+    "clsx": "^2.1.1",
     "framer-motion": "^12.23.12",
     "next": "15.4.5",
     "react": "19.1.0",
