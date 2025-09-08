@@ -4,7 +4,7 @@ import fs from 'node:fs';
 function sh(cmd: string): string {
   try {
     return execSync(cmd, { stdio: 'pipe' }).toString().trim();
-  } catch (_err: unknown) {
+  } catch {
     return '';
   }
 }
