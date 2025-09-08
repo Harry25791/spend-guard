@@ -8,7 +8,7 @@ export function currentBranch() {
 return sh('git rev-parse --abbrev-ref HEAD');
 }
 export function ensureCleanTree() {
-const s = sh('git status --porcelain');
+const s = sh('git status --porcelain --untracked-files=no');
 if (s) throw new Error('Working tree not clean. Commit or stash before running agent.');
 }
 export function createBranch(name: string) {
