@@ -2,7 +2,6 @@
 import { loadProjects, saveProjects, loadEntries, saveEntries } from "@/lib/storage";
 import type { Project, EntryV2, EntryV1 } from "@/lib/storage";
 
-// NOTE: `normalizeProvider` import was unused; removed to satisfy no-unused-vars
 export const SCHEMA_VERSION = 2;
 
 /* -------------------------------------------------------------------------- */
@@ -29,7 +28,10 @@ type ImportStrategy = "merge" | "replace";
 
 /** Minimal CSV-friendly shapes */
 type CsvProject = Pick<Project, "id" | "name" | "provider" | "rateUsdPer1k">;
-type CsvEntry = Pick<EntryV2, "id" | "date" | "provider" | "model" | "rateUsdPer1k" | "tokens" | "cost">;
+type CsvEntry = Pick<
+  EntryV2,
+  "id" | "date" | "provider" | "model" | "rateUsdPer1k" | "tokens" | "cost"
+>;
 
 /* -------------------------------------------------------------------------- */
 /* Small runtime guards (for safe JSON parsing)                                */
@@ -49,6 +51,23 @@ function isCsvEntry(v: unknown): v is CsvEntry {
   const cost = asNumber(v.cost);
   // provider/model/rateUsdPer1k are optional
   return !!(id && date && Number.isFinite(tokens ?? NaN) && Number.isFinite(cost ?? NaN));
+}
+
+function isExportBundleV1(x: unknown): x is ExportBundleV1 {
+  if (!isRecord(x)) return false;
+  const projectsOk = Array.isArray((x as { projects?: unknown }).projects);
+  const entriesOk = isRecord((x as { entries?: unknown }).entries);
+  const sv = (x as { schemaVersion?: unknown }).schemaVersion;
+  const svOk = sv === undefined || sv === 1;
+  return projectsOk && entriesOk && svOk;
+}
+
+function isExportBundleV2(x: unknown): x is ExportBundleV2 {
+  if (!isRecord(x)) return false;
+  const sv = (x as { schemaVersion?: unknown }).schemaVersion;
+  const projectsOk = Array.isArray((x as { projects?: unknown }).projects);
+  const entriesOk = isRecord((x as { entries?: unknown }).entries);
+  return sv === 2 && projectsOk && entriesOk;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -141,18 +160,18 @@ export function importAll(
 
   // Detect version safely
   const sv =
-    isRecord(parsed) && typeof parsed.schemaVersion === "number" ? (parsed.schemaVersion as number) : undefined;
+    isRecord(parsed) && typeof parsed.schemaVersion === "number"
+      ? (parsed.schemaVersion as number)
+      : undefined;
 
   let bundle: ExportBundleV2;
   if (!sv || sv === 1) {
-    // Treat as v1 legacy
-    if (!isRecord(parsed) || !Array.isArray((parsed as ExportBundleV1).projects) || !(parsed as ExportBundleV1).entries) {
-      throw new Error("Invalid legacy export structure.");
-    }
-    bundle = migrateV1toV2(parsed as ExportBundleV1);
+    if (!isExportBundleV1(parsed)) throw new Error("Invalid legacy export structure.");
+    bundle = migrateV1toV2(parsed);
     warnings.push("Imported legacy export (v1). Automatically upgraded to v2.");
   } else if (sv === 2) {
-    bundle = parsed as ExportBundleV2;
+    if (!isExportBundleV2(parsed)) throw new Error("Invalid v2 export structure.");
+    bundle = parsed;
   } else {
     throw new Error(`Unsupported schemaVersion: ${sv}`);
   }
@@ -168,7 +187,10 @@ export function importAll(
     }
     return {
       projects: incomingProjects.length,
-      entries: Object.values(incomingEntries).reduce((n, arr) => n + (arr?.length || 0), 0),
+      entries: Object.values(incomingEntries).reduce(
+        (n, arr) => n + (arr?.length || 0),
+        0
+      ),
       warnings,
     };
   }
@@ -222,13 +244,16 @@ export function labelForScope(s: ViewScope): string {
   return SCOPE_OPTIONS.find((o) => o.value === s)?.label ?? "This Month";
 }
 
+function isViewScopeValue(x: unknown): x is ViewScope {
+  return typeof x === "string" && SCOPE_OPTIONS.some((o) => o.value === x);
+}
+
 export function getViewScope(): ViewScope {
   try {
     const raw = localStorage.getItem("settings");
     const obj: unknown = raw ? JSON.parse(raw) : {};
-    const v =
-      isRecord(obj) && typeof obj.viewScope === "string" ? (obj.viewScope as string) : undefined;
-    return (v && SCOPE_OPTIONS.some((o) => o.value === v)) ? (v as ViewScope) : "month";
+    const maybe = isRecord(obj) ? (obj as Record<string, unknown>).viewScope : undefined;
+    return isViewScopeValue(maybe) ? maybe : "month";
   } catch {
     return "month";
   }
@@ -285,7 +310,10 @@ function firstOfThisMonthLocal(now = new Date()): Date {
   return d;
 }
 
-export function rangeForScope(scope: ViewScope, now = new Date()): { from?: Date; to?: Date } {
+export function rangeForScope(
+  scope: ViewScope,
+  now = new Date()
+): { from?: Date; to?: Date } {
   switch (scope) {
     case "month":
       return { from: firstOfThisMonthLocal(now), to: endOfTodayLocal(now) };
@@ -326,16 +354,19 @@ export function filterByScope(dateISO: string, scope: ViewScope): boolean {
 /* -------------------------------------------------------------------------- */
 
 function toCsvRow(fields: (string | number | null | undefined)[]): string {
-  const esc = (v: unknown) => {
+  const esc = (v: string | number | null | undefined) => {
     if (v === null || v === undefined) return "";
-    const s = String(v);
+    const s = typeof v === "string" ? v : String(v); // numbers only
     if (/[",\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
     return s;
   };
   return fields.map(esc).join(",");
 }
 
-function entriesToCsv(projects: CsvProject[], entriesByProject: Record<string, CsvEntry[]>): string {
+function entriesToCsv(
+  projects: CsvProject[],
+  entriesByProject: Record<string, CsvEntry[]>
+): string {
   const header = [
     "project_id",
     "project_name",
@@ -377,7 +408,9 @@ function entriesToCsv(projects: CsvProject[], entriesByProject: Record<string, C
 /* Filtered views (localStorage → typed)                                      */
 /* -------------------------------------------------------------------------- */
 
-export function getFilteredEntriesForAll(scope: ViewScope): { projects: CsvProject[]; entries: Record<string, CsvEntry[]> } {
+export function getFilteredEntriesForAll(
+  scope: ViewScope
+): { projects: CsvProject[]; entries: Record<string, CsvEntry[]> } {
   // Projects
   const raw = localStorage.getItem("projects");
   const parsedProjects: unknown = raw ? JSON.parse(raw) : [];
@@ -415,7 +448,10 @@ export function getFilteredEntriesForAll(scope: ViewScope): { projects: CsvProje
 }
 
 // Optional per-project helper (handy in project page)
-export function getFilteredEntriesForProject(projectId: string, scope: ViewScope): CsvEntry[] {
+export function getFilteredEntriesForProject(
+  projectId: string,
+  scope: ViewScope
+): CsvEntry[] {
   const eraw = localStorage.getItem(`entries-${projectId}`);
   if (!eraw) return [];
   try {
