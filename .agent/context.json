@@ -1,0 +1,195 @@
+{
+  "generatedAt": "2025-09-08T22:00:45.671Z",
+  "sources": [
+    {
+      "path": "README.md",
+      "bytes": 2321,
+      "sha1": "febb6590db5de2407dfe2baa89c8ec4ca96f4f96"
+    },
+    {
+      "path": "src/app/layout.tsx",
+      "bytes": 473,
+      "sha1": "e68bdbe1b7284c4538781120824189d3bbbbcfee"
+    },
+    {
+      "path": "src/app/page.tsx",
+      "bytes": 16304,
+      "sha1": "0904612e4d8413dafe70ad74cd8aa018f7f21f0c"
+    },
+    {
+      "path": "src/lib/aggregate.ts",
+      "bytes": 11128,
+      "sha1": "978a67175ad15b545ffbf8282574c5be3750e474"
+    },
+    {
+      "path": "src/lib/cn.ts",
+      "bytes": 100,
+      "sha1": "ebd644157fb67df39bd1f986bf4102d276dfe60d"
+    },
+    {
+      "path": "src/lib/io.test.ts",
+      "bytes": 2026,
+      "sha1": "826b9c06dc1ebd82084cd9fcc160c9b9f79179c1"
+    },
+    {
+      "path": "src/lib/io.ts",
+      "bytes": 14475,
+      "sha1": "79b25b05561161f0191dc269302a60675d60ab6e"
+    },
+    {
+      "path": "src/lib/rates.ts",
+      "bytes": 1974,
+      "sha1": "05ff7d745ec7c02ee41bc83e55ccf40440b6b1ad"
+    },
+    {
+      "path": "src/lib/storage.ts",
+      "bytes": 1913,
+      "sha1": "b8421a47c9261b35dda61412026b34238ecb797f"
+    },
+    {
+      "path": "src/lib/token.ts",
+      "bytes": 1420,
+      "sha1": "905a0569282cea2a8af3ddd0dc1122caab9679a7"
+    },
+    {
+      "path": "src/app/projects/page.tsx",
+      "bytes": 15031,
+      "sha1": "6d225f160801259e55a7c365dd2f2fd977adecbe"
+    },
+    {
+      "path": "src/app/reports/page.tsx",
+      "bytes": 424,
+      "sha1": "76c38256e7c1947daee106285478dca66ebbf7ab"
+    },
+    {
+      "path": "src/app/settings/page.tsx",
+      "bytes": 5484,
+      "sha1": "c0578df0d1f200b394b23ff8d89ed42d3fc7dae2"
+    },
+    {
+      "path": "src/components/branding/GaurdianBadge.tsx",
+      "bytes": 2309,
+      "sha1": "72835142fc93a8e66b4971d93dcb4c8fc2e129ed"
+    },
+    {
+      "path": "src/components/branding/GaurdianHero.tsx",
+      "bytes": 2033,
+      "sha1": "298ebb28039c7627e9f7331113ca2d6c58274e32"
+    },
+    {
+      "path": "src/components/branding/SpendGuardAvatar.tsx",
+      "bytes": 3056,
+      "sha1": "0967448c4c1abe183698c1de1eb9c122d8aafd8c"
+    },
+    {
+      "path": "src/components/dashboard/KPIRow.tsx",
+      "bytes": 776,
+      "sha1": "3a2e71908a78b6fdd3c8b5c26d358618d80e919c"
+    },
+    {
+      "path": "src/components/charts/EntryHistogram.tsx",
+      "bytes": 3458,
+      "sha1": "a2d32d6e69b05affc1e7c3f6017ff7037ebb3d0b"
+    },
+    {
+      "path": "src/components/charts/MiniLine.tsx",
+      "bytes": 2210,
+      "sha1": "9aefa2285b4eb3d13bd658064806f92c55835823"
+    },
+    {
+      "path": "src/components/charts/ModelStackArea.tsx",
+      "bytes": 2358,
+      "sha1": "4fe13857b6c1672e057c7c5956e9b318ddabfe0b"
+    },
+    {
+      "path": "src/components/charts/PieByModel.tsx",
+      "bytes": 2533,
+      "sha1": "5cbf6f7e63dddb01ce85e9bc794f184d5fcda969"
+    },
+    {
+      "path": "src/components/charts/ProviderStackArea.tsx",
+      "bytes": 2385,
+      "sha1": "4cf97f597b6b09f412cb0b24ed248c521ac9f734"
+    },
+    {
+      "path": "src/components/charts/theme.ts",
+      "bytes": 350,
+      "sha1": "8ecbbe35939c98cef25158faf228bd6b92896c1b"
+    },
+    {
+      "path": "src/components/charts/Timeline.tsx",
+      "bytes": 2431,
+      "sha1": "0b9c77f7d266065b9553a23beb45ee2ee12c9461"
+    },
+    {
+      "path": "src/components/charts/TokenLimitUsage.tsx",
+      "bytes": 5310,
+      "sha1": "a2faf8150801901bf7e095113eb0a223d54bf0a3"
+    },
+    {
+      "path": "src/components/charts/TopModelsBar.tsx",
+      "bytes": 2625,
+      "sha1": "ed41dd42e0181bc1f9adc632b234170755d9c783"
+    },
+    {
+      "path": "src/components/charts/utils.ts",
+      "bytes": 807,
+      "sha1": "325292964ac3fa528f46c0cd6be2a8f8c7189ef5"
+    },
+    {
+      "path": "src/components/modals/AlertsModal.tsx",
+      "bytes": 4402,
+      "sha1": "63bb772bf04169308439c9fa899f006ecda0b12f"
+    },
+    {
+      "path": "src/components/motion/Stagger.tsx",
+      "bytes": 2010,
+      "sha1": "2ced8f8e98cf22f01bc307aac165637bdb20a2d6"
+    },
+    {
+      "path": "src/components/layout/AppShell.tsx",
+      "bytes": 6482,
+      "sha1": "d920a3a2f8c1154e228f211f9d347f885ea44046"
+    },
+    {
+      "path": "src/components/layout/Background.tsx",
+      "bytes": 859,
+      "sha1": "8ea90dad8a04008af8d384c527d775ebbeb08312"
+    },
+    {
+      "path": "src/components/layout/LeftRail.tsx",
+      "bytes": 3615,
+      "sha1": "59d2cd2adddcabb27763756944c97a9b000c625a"
+    },
+    {
+      "path": "src/components/ui/Aurora.tsx",
+      "bytes": 318,
+      "sha1": "845581ad39ece833f71a18923a00d31c15404b0c"
+    },
+    {
+      "path": "src/components/ui/Buttons.tsx",
+      "bytes": 2465,
+      "sha1": "684c0519e7be255b149609dd203612651a2706b3"
+    },
+    {
+      "path": "src/components/ui/HeroAvatar.tsx",
+      "bytes": 3086,
+      "sha1": "00d50aa87fc66f06e02557aefce94f1f872c6909"
+    },
+    {
+      "path": "src/components/ui/RangePicker.tsx",
+      "bytes": 4826,
+      "sha1": "eeedbb521336bfd84fe69d74167d545d4abc260b"
+    },
+    {
+      "path": "src/components/ui/SGCard.tsx",
+      "bytes": 900,
+      "sha1": "4525561e8861b052a0d471bd7a77b5ba98f3013e"
+    },
+    {
+      "path": "src/app/projects/[id]/page.tsx",
+      "bytes": 35729,
+      "sha1": "4917021415e8ec2c7a42fc87b07d9856ccf0fe07"
+    }
+  ]
+}
