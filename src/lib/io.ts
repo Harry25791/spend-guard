@@ -158,10 +158,10 @@ export function importAll(
     throw new Error("Invalid JSON file.");
   }
 
-  // Detect version safely
+  // Detect version safely (no unnecessary assertions)
   const sv =
     isRecord(parsed) && typeof parsed.schemaVersion === "number"
-      ? (parsed.schemaVersion as number)
+      ? parsed.schemaVersion
       : undefined;
 
   let bundle: ExportBundleV2;
@@ -252,7 +252,7 @@ export function getViewScope(): ViewScope {
   try {
     const raw = localStorage.getItem("settings");
     const obj: unknown = raw ? JSON.parse(raw) : {};
-    const maybe = isRecord(obj) ? (obj as Record<string, unknown>).viewScope : undefined;
+    const maybe = isRecord(obj) ? obj.viewScope : undefined;
     return isViewScopeValue(maybe) ? maybe : "month";
   } catch {
     return "month";
