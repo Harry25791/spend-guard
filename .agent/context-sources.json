@@ -1,0 +1,17 @@
+{
+"include": [
+"ROADMAP.md",
+"README.md",
+"docs/**/*.md",
+"src/**/*.ts",
+"src/**/*.tsx",
+"app/**/*.ts",
+"app/**/*.tsx"
+],
+"exclude": [
+"node_modules/**",
+".next/**",
+"coverage/**",
+"dist/**"
+]
+}

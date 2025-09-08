@@ -9,7 +9,14 @@
     "lint": "next lint",
     "test": "vitest",
     "test:ui": "vitest --ui",
-    "test:run": "vitest run"
+    "test:run": "vitest run",
+    "test:unit": "vitest run",
+    "typecheck": "tsc -p . --noEmit",
+    "agent:context": "tsx scripts/agent/context/build-context.ts",
+    "agent:plan": "tsx scripts/agent/planner.ts",
+    "agent:impl": "tsx scripts/agent/implementer.ts",
+    "agent:check": "pnpm -s typecheck && pnpm -s lint && pnpm -s test:unit",
+    "agent:run": "pnpm agent:context && pnpm agent:plan && pnpm agent:impl && pnpm agent:check"
   },
   "dependencies": {
     "framer-motion": "^12.23.12",
@@ -28,9 +35,11 @@
     "autoprefixer": "^10.4.21",
     "eslint": "^9",
     "eslint-config-next": "15.4.5",
+    "fast-glob": "^3.3.2",
     "jsdom": "^26.1.0",
     "postcss": "^8.5.6",
     "tailwindcss": "^4",
+    "tsx": "^4.15.7",
     "typescript": "^5",
     "vitest": "^3.2.4"
   }

@@ -1,0 +1,10 @@
+{
+"maxChangedLines": 400,
+"branchPrefix": "agent/",
+"allowPaths": ["src/**", "tests/**", "README.md", "ROADMAP.md", "app/**", "scripts/**", ".github/**", ".agent/**"],
+"forbidPaths": ["node_modules/**", "public/**.png", "public/**.jpg"],
+"planner": {
+"defaultChangeBudget": 200,
+"fallbackTask": "Create initial agent seed test and TODO"
+}
+}
