@@ -1,74 +1,131 @@
 name: agent-lite
 
-
 on:
-workflow_dispatch:
-inputs:
-task:
-description: "Describe the next small task (optional; defaults to ROADMAP.md first unchecked item)"
-required: false
-type: string
-
+  workflow_dispatch:
+    inputs:
+      task:
+        description: "Describe the next small task (optional; defaults to ROADMAP.md first unchecked item)"
+        required: false
+        type: string
+  pull_request:
+    branches: [ main ]
 
 permissions:
-contents: write
-pull-requests: write
+  contents: write
+  pull-requests: write
 
+concurrency:
+  group: pr-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
-run:
-runs-on: ubuntu-latest
-steps:
-- name: Checkout
-uses: actions/checkout@v4
-with:
-fetch-depth: 0
+  # Manual agent run: plan → implement → check → push → open PR
+  run:
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
 
-- name: Setup Node
-uses: actions/setup-node@v4
-with:
-node-version: '20'
-cache: 'pnpm'
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+          run_install: true
 
+      - name: Install deps (non-frozen to allow lockfile refresh)
+        run: pnpm install --frozen-lockfile=false
 
-- name: Setup pnpm
-uses: pnpm/action-setup@v4
-with:
-version: 9
+      - name: Build context
+        run: pnpm agent:context
 
+      - name: Plan step
+        run: pnpm agent:plan
+        env:
+          AGENT_TASK: ${{ github.event.inputs.task }}
 
-- name: Install
-run: pnpm install --frozen-lockfile=false
+      - name: Implement step (branch + seed)
+        run: pnpm agent:impl
 
+      - name: Run checks (typecheck, lint, unit tests)
+        run: pnpm agent:check
 
-- name: Build context
-run: pnpm agent:context
+      - name: Configure Git author
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
+      - name: Get branch name
+        id: br
+        run: echo "branch=$(git rev-parse --abbrev-ref HEAD)" >> "$GITHUB_OUTPUT"
 
-- name: Plan step
-run: pnpm agent:plan
+      - name: Push branch
+        run: |
+          git push --set-upstream origin "${{ steps.br.outputs.branch }}"
 
+      - name: Create Pull Request
+        id: create-pr
+        uses: actions/github-script@v7
+        env:
+          BRANCH: ${{ steps.br.outputs.branch }}
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const head = process.env.BRANCH;
+            const base = 'main';
 
-- name: Implement step (branch + seed)
-run: pnpm agent:impl
+            // If a PR for this branch already exists, reuse it
+            const { data: prs } = await github.rest.pulls.list({
+              owner, repo, state: 'open', head: `${owner}:${head}`,
+            });
 
+            if (prs.length) {
+              core.setOutput('url', prs[0].html_url);
+            } else {
+              const { data: pr } = await github.rest.pulls.create({
+                owner, repo, head, base,
+                title: `agent: ${head}`,
+                body: 'Automated agent step (plan/implement/check). Review carefully. Do not merge if checks fail or patch is large.',
+              });
+              core.setOutput('url', pr.html_url);
+            }
 
-- name: Run checks (typecheck, lint, unit tests)
-run: pnpm agent:check
+      - name: PR link
+        run: echo "PR opened: ${{ steps.create-pr.outputs.url }}"
 
+  # PR gatekeeper: runs on PRs to main and must pass before merge
+  check:
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-- name: Get branch name
-id: br
-run: echo "branch=$(git rev-parse --abbrev-ref HEAD)" >> $GITHUB_OUTPUT
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+          run_install: true
 
-- name: Create Pull Request
-uses: actions/github-script@v7
-with:
-script: |
-const branch = process.env.BRANCH || `"${{ steps.br.outputs.branch }}"`;
-const { data: pr } = await github.rest.pulls.create({
-owner: context.repo.owner,
-repo: context.repo.repo,
-core.setOutput('url', pr.html_url);
+      - name: Install deps
+        run: pnpm install --frozen-lockfile=false
+
+      - name: Agent check (typecheck + lint-changed + unit tests)
+        run: pnpm agent:check

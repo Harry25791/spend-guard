@@ -15,7 +15,8 @@
     "agent:context": "tsx scripts/agent/context/build-context.ts",
     "agent:plan": "tsx scripts/agent/planner.ts",
     "agent:impl": "tsx scripts/agent/implementer.ts",
-    "agent:check": "pnpm -s typecheck && pnpm -s lint && pnpm -s test:unit",
+    "lint:changed": "tsx scripts/agent/checks/lint-changed.ts",
+    "agent:check": "pnpm -s typecheck && pnpm -s lint:changed && pnpm -s test:unit",
     "agent:run": "pnpm agent:context && pnpm agent:plan && pnpm agent:impl && pnpm agent:check"
   },
   "dependencies": {
@@ -27,20 +28,29 @@
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
+    "@next/eslint-plugin-next": "^15.5.2",
     "@tailwindcss/postcss": "^4.1.12",
-    "@types/node": "^20",
+    "@types/node": "^20.19.13",
     "@types/react": "^19.1.10",
     "@types/react-dom": "^19.1.7",
+    "@typescript-eslint/eslint-plugin": "^8.43.0",
+    "@typescript-eslint/parser": "^8.43.0",
     "@vitest/ui": "^3.2.4",
     "autoprefixer": "^10.4.21",
     "eslint": "^9",
     "eslint-config-next": "15.4.5",
-    "fast-glob": "^3.3.2",
+    "eslint-plugin-jsx-a11y": "^6.10.2",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "fast-glob": "^3.3.3",
+    "globals": "^16.3.0",
     "jsdom": "^26.1.0",
     "postcss": "^8.5.6",
     "tailwindcss": "^4",
-    "tsx": "^4.15.7",
+    "tsx": "^4.20.5",
     "typescript": "^5",
+    "typescript-eslint": "^8.43.0",
     "vitest": "^3.2.4"
-  }
+  },
+  "packageManager": "pnpm@9.15.9+sha512.68046141893c66fad01c079231128e9afb89ef87e2691d69e4d40eee228988295fd4682181bae55b58418c3a253bde65a505ec7c5f9403ece5cc3cd37dcf2531"
 }
