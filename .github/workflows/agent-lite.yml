@@ -1,0 +1,74 @@
+name: agent-lite
+
+
+on:
+workflow_dispatch:
+inputs:
+task:
+description: "Describe the next small task (optional; defaults to ROADMAP.md first unchecked item)"
+required: false
+type: string
+
+
+permissions:
+contents: write
+pull-requests: write
+
+
+jobs:
+run:
+runs-on: ubuntu-latest
+steps:
+- name: Checkout
+uses: actions/checkout@v4
+with:
+fetch-depth: 0
+
+
+- name: Setup Node
+uses: actions/setup-node@v4
+with:
+node-version: '20'
+cache: 'pnpm'
+
+
+- name: Setup pnpm
+uses: pnpm/action-setup@v4
+with:
+version: 9
+
+
+- name: Install
+run: pnpm install --frozen-lockfile=false
+
+
+- name: Build context
+run: pnpm agent:context
+
+
+- name: Plan step
+run: pnpm agent:plan
+
+
+- name: Implement step (branch + seed)
+run: pnpm agent:impl
+
+
+- name: Run checks (typecheck, lint, unit tests)
+run: pnpm agent:check
+
+
+- name: Get branch name
+id: br
+run: echo "branch=$(git rev-parse --abbrev-ref HEAD)" >> $GITHUB_OUTPUT
+
+
+- name: Create Pull Request
+uses: actions/github-script@v7
+with:
+script: |
+const branch = process.env.BRANCH || `"${{ steps.br.outputs.branch }}"`;
+const { data: pr } = await github.rest.pulls.create({
+owner: context.repo.owner,
+repo: context.repo.repo,
+core.setOutput('url', pr.html_url);
