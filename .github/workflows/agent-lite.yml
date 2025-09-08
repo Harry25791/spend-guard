@@ -42,32 +42,40 @@ jobs:
           run_install: true
 
       - name: Install deps (non-frozen to allow lockfile refresh)
+        shell: bash
         run: pnpm install --frozen-lockfile=false
 
       - name: Build context
+        shell: bash
         run: pnpm agent:context
 
       - name: Plan step
+        shell: bash
         run: pnpm agent:plan
         env:
           AGENT_TASK: ${{ github.event.inputs.task }}
 
       - name: Implement step (branch + seed)
+        shell: bash
         run: pnpm agent:impl
 
       - name: Run checks (typecheck, lint, unit tests)
+        shell: bash
         run: pnpm agent:check
 
       - name: Configure Git author
+        shell: bash
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
       - name: Get branch name
         id: br
+        shell: bash
         run: echo "branch=$(git rev-parse --abbrev-ref HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Push branch
+        shell: bash
         run: |
           git push --set-upstream origin "${{ steps.br.outputs.branch }}"
 
@@ -100,7 +108,8 @@ jobs:
             }
 
       - name: PR link
-        run: echo "PR opened: ${{ steps.create-pr.outputs.url }}"
+        shell: bash
+        run: echo "PR opened:${{ steps.create-pr.outputs.url }}"
 
   # PR gatekeeper: runs on PRs to main and must pass before merge
   check:
@@ -125,7 +134,9 @@ jobs:
           run_install: true
 
       - name: Install deps
+        shell: bash
         run: pnpm install --frozen-lockfile=false
 
       - name: Agent check (typecheck + lint-changed + unit tests)
+        shell: bash
         run: pnpm agent:check
