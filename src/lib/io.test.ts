@@ -34,7 +34,7 @@ describe("rangeForScope (local-day inclusive)", () => {
 
   it("last365 includes today", () => {
     const { from, to } = rangeForScope("last365" as ViewScope, NOW);
-    expect(ymdLocal(from)).toBe("2024-08-24"); // 365 inclusive from 2025-08-22 -> 2024-08-24
+    expect(ymdLocal(from)).toBe("2024-08-23"); // 365 inclusive from 2025-08-22 -> 2024-08-24
     expect(ymdLocal(to)).toBe("2025-08-22");
   });
 
