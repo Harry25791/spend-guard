@@ -215,15 +215,11 @@ function parseLocalDateISO(dateISO: string): Date | null {
 }
 
 function startOfTodayLocal(now = new Date()): Date {
-  const d = new Date(now);
-  d.setHours(0, 0, 0, 0);
-  return d;
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
 }
 
 function endOfTodayLocal(now = new Date()): Date {
-  const d = new Date(now);
-  d.setHours(23, 59, 59, 999);
-  return d;
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
 }
 
 /**
@@ -231,9 +227,12 @@ function endOfTodayLocal(now = new Date()): Date {
  * from = start of (today - (N - 1) days), to = end of today
  */
 function lastNDaysInclusiveLocal(n: number, now = new Date()): { from: Date; to: Date } {
-  const to = endOfTodayLocal(now);
-  const from = startOfTodayLocal(now);
-  from.setDate(from.getDate() - (n - 1));
+  if (n < 1) throw new Error('n must be >= 1');
+  const y = now.getFullYear();
+  const m = now.getMonth();
+  const d = now.getDate();
+  const from = new Date(y, m, d - (n - 1), 0, 0, 0, 0);
+  const to = new Date(y, m, d, 23, 59, 59, 999);
   return { from, to };
 }
 
