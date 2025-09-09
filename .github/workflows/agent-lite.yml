@@ -19,6 +19,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Manual agent run: plan → implement → check → push → open PR
   run:
     if: ${{ github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
@@ -39,6 +40,9 @@ jobs:
         uses: pnpm/action-setup@v4
         with:
           version: 9
+
+      - name: Verify pnpm
+        run: pnpm --version
 
       - name: Install deps
         run: pnpm install --frozen-lockfile=false
@@ -99,6 +103,7 @@ jobs:
       - name: PR link
         run: echo "PR opened:${{ steps.create-pr.outputs.url }}"
 
+  # PR gatekeeper: runs on PRs to main and must pass before merge
   check:
     if: ${{ github.event_name == 'pull_request' }}
     runs-on: ubuntu-latest
@@ -119,6 +124,9 @@ jobs:
         uses: pnpm/action-setup@v4
         with:
           version: 9
+
+      - name: Verify pnpm
+        run: pnpm --version
 
       - name: Install deps
         run: pnpm install --frozen-lockfile=false
