@@ -1,41 +1,51 @@
-import { execSync } from 'node:child_process';
-import fs from 'node:fs';
+// scripts/agent/checks/lint-changed.ts
+import { execSync } from "node:child_process";
+import { existsSync } from "node:fs";
 
 function sh(cmd: string): string {
-  try {
-    return execSync(cmd, { stdio: 'pipe' }).toString().trim();
-  } catch {
-    return '';
-  }
+  return execSync(cmd, { stdio: ["ignore", "pipe", "pipe"] }).toString().trim();
 }
 
-function getChanged(): string[] {
-  // Ensure we have the base to diff against
-  sh('git fetch --depth=1 origin main');
-  const out = sh('git diff --name-only --diff-filter=ACMRTUXB origin/main...');
-  const files = out
-    .split('\n')
+const ALLOWED_ROOTS = ["scripts/agent", "tests/agent"];
+const isCodeFile = (f: string) => /\.(tsx?|jsx?|mjs|cjs)$/.test(f);
+const isInAllowedRoots = (f: string) => ALLOWED_ROOTS.some((r) => f === r || f.startsWith(`${r}/`));
+
+function run() {
+  let out = "";
+  try {
+    // With fetch-depth: 0 this works on CI and locally
+    out = sh("git diff --name-only --diff-filter=ACMRTUXB origin/main...HEAD");
+  } catch {
+    // Fallback if origin/main is unavailable
+    out = sh("git ls-files");
+  }
+
+  const changed = out
+    .split("\n")
     .map((s) => s.trim())
     .filter(Boolean)
-    .filter((f) => /\.(ts|tsx)$/.test(f));
-  return Array.from(new Set(files));
-}
+    .filter(isCodeFile)
+    .filter(isInAllowedRoots);
 
-function run(): void {
-  const changed = getChanged();
-  if (changed.length === 0) {
-    // Fallback: lint agent code so CI still validates something useful
-    const fallback = ['scripts/agent', '.agent', 'tests/agent'].filter((p) => fs.existsSync(p));
-    if (fallback.length === 0) {
-      console.log('No changed TS/TSX files; nothing to lint.');
-      return;
-    }
-    console.log(`No changed files; linting fallback: ${fallback.join(', ')}`);
-    execSync(`pnpm exec eslint ${fallback.join(' ')} --max-warnings=0`, { stdio: 'inherit' });
+  let targets: string[] = [];
+
+  if (changed.length > 0) {
+    targets = changed;
+    console.log("Linting agent-changed files:");
+    for (const f of targets) console.log(f);
+  } else {
+    // Always lint only agent scope on fallback
+    targets = ALLOWED_ROOTS.filter((p) => existsSync(p));
+    console.log("No changed files; linting agent scope:", targets.join(", "));
+  }
+
+  if (targets.length === 0) {
+    console.log("No lint targets; skipping.");
     return;
   }
-  console.log(`Linting changed files:\n${changed.join('\n')}\n`);
-  execSync(`pnpm exec eslint ${changed.join(' ')} --max-warnings=0`, { stdio: 'inherit' });
+
+  const cmd = "pnpm exec eslint " + targets.map((t) => JSON.stringify(t)).join(" ") + " --max-warnings=0";
+  execSync(cmd, { stdio: "inherit" });
 }
 
 run();

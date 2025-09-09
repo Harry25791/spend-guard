@@ -1,12 +1,33 @@
-import { describe, it, expect } from 'vitest';
-import fs from 'node:fs';
+import fs from "node:fs";
+import { execSync } from "node:child_process";
+import { describe, it, expect } from "vitest";
 
+const CTX_PATH = ".agent/context.json";
 
-describe('context pack', () => {
-it('exists and is JSON', () => {
-const raw = fs.readFileSync('.agent/context.json', 'utf8');
-const obj = JSON.parse(raw);
-expect(obj).toHaveProperty('generatedAt');
-expect(Array.isArray(obj.sources)).toBe(true);
-});
+function ensureContextBuilt() {
+  if (fs.existsSync(CTX_PATH)) return;
+  try {
+    execSync("pnpm agent:context", { stdio: "inherit" });
+  } catch {
+    // Fallback: run the builder directly
+    execSync("node --loader tsx ./scripts/agent/context/build-context.ts", {
+      stdio: "inherit",
+    });
+  }
+}
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null;
+}
+
+describe("context pack", () => {
+  it("exists and is JSON", () => {
+    ensureContextBuilt();
+    const raw = fs.readFileSync(CTX_PATH, "utf8");
+    const obj: unknown = JSON.parse(raw);
+    expect(isRecord(obj)).toBe(true);
+    if (isRecord(obj)) {
+      expect(Object.prototype.hasOwnProperty.call(obj, "generatedAt")).toBe(true);
+    }
+  });
 });

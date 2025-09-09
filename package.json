@@ -16,7 +16,8 @@
     "agent:plan": "tsx scripts/agent/planner.ts",
     "agent:impl": "tsx scripts/agent/implementer.ts",
     "lint:changed": "tsx scripts/agent/checks/lint-changed.ts",
-    "agent:check": "pnpm -s typecheck && pnpm -s lint:changed && pnpm -s test:unit",
+    "agent:validate": "tsx scripts/agent/checks/validate-agent.ts",
+    "agent:check": "pnpm -s typecheck && pnpm -s lint:changed && pnpm -s agent:context && pnpm -s test:unit && pnpm -s agent:validate",
     "agent:run": "pnpm agent:context && pnpm agent:plan && pnpm agent:impl && pnpm agent:check"
   },
   "dependencies": {
