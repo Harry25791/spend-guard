@@ -28,18 +28,13 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Setup Node (with pnpm cache)
+      - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: pnpm
-          cache-dependency-path: pnpm-lock.yaml
 
-      - name: Enable Corepack
-        run: corepack enable
-
-      - name: Activate pnpm 9
-        run: corepack prepare pnpm@9.12.0 --activate
+      - name: Install pnpm (global)
+        run: npm i -g pnpm@9.12.0
 
       - name: Verify pnpm
         run: pnpm --version
@@ -110,18 +105,13 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Setup Node (with pnpm cache)
+      - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: pnpm
-          cache-dependency-path: pnpm-lock.yaml
 
-      - name: Enable Corepack
-        run: corepack enable
-
-      - name: Activate pnpm 9
-        run: corepack prepare pnpm@9.12.0 --activate
+      - name: Install pnpm (global)
+        run: npm i -g pnpm@9.12.0
 
       - name: Verify pnpm
         run: pnpm --version
