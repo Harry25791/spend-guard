@@ -19,7 +19,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Manual agent run: plan → implement → check → push → open PR
   run:
     if: ${{ github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
@@ -34,65 +33,40 @@ jobs:
         with:
           node-version: 20
 
-      - name: Enable Corepack & activate pnpm@9
-        shell: bash
-        run: |
-          corepack enable
-          corepack prepare pnpm@9 --activate
-          pnpm -v
+      - name: Install pnpm (global)
+        run: npm i -g pnpm@9.12.0
 
-      - name: Cache pnpm store
-        uses: actions/cache@v4
-        with:
-          path: ${{ env.PNPM_STORE_PATH }}
-          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('pnpm-lock.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-pnpm-store-
-        env:
-          PNPM_STORE_PATH: ${{ steps.compute-store.outputs.store-path }}
-        # compute-store needs to run first
-      - name: Compute pnpm store path
-        id: compute-store
-        shell: bash
-        run: echo "store-path=$(pnpm store path)" >> "$GITHUB_OUTPUT"
+      - name: Verify pnpm
+        run: pnpm --version
 
-      - name: Install deps (non-frozen to allow lockfile refresh)
-        shell: bash
+      - name: Install deps
         run: pnpm install --frozen-lockfile=false
 
       - name: Build context
-        shell: bash
         run: pnpm agent:context
 
       - name: Plan step
-        shell: bash
         run: pnpm agent:plan
         env:
           AGENT_TASK: ${{ github.event.inputs.task }}
 
       - name: Implement step (branch + seed)
-        shell: bash
         run: pnpm agent:impl
 
       - name: Run checks (typecheck, lint, unit tests)
-        shell: bash
         run: pnpm agent:check
 
       - name: Configure Git author
-        shell: bash
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
       - name: Get branch name
         id: br
-        shell: bash
         run: echo "branch=$(git rev-parse --abbrev-ref HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Push branch
-        shell: bash
-        run: |
-          git push --set-upstream origin "${{ steps.br.outputs.branch }}"
+        run: git push --set-upstream origin "${{ steps.br.outputs.branch }}"
 
       - name: Create Pull Request
         id: create-pr
@@ -105,23 +79,23 @@ jobs:
             const repo = context.repo.repo;
             const head = process.env.BRANCH;
             const base = 'main';
-            const { data: prs } = await github.rest.pulls.list({ owner, repo, state: 'open', head: `${owner}:${head}` });
+            const { data: prs } = await github.rest.pulls.list({
+              owner, repo, state: 'open', head: `${owner}:${head}`,
+            });
             if (prs.length) {
               core.setOutput('url', prs[0].html_url);
             } else {
               const { data: pr } = await github.rest.pulls.create({
                 owner, repo, head, base,
                 title: `agent: ${head}`,
-                body: 'Automated agent step (plan/implement/check). Review carefully. Do not merge if checks fail or patch is large.',
+                body: 'Automated agent step (plan/implement/check). Review carefully.',
               });
               core.setOutput('url', pr.html_url);
             }
 
       - name: PR link
-        shell: bash
         run: echo "PR opened:${{ steps.create-pr.outputs.url }}"
 
-  # PR gatekeeper: runs on PRs to main and must pass before merge
   check:
     if: ${{ github.event_name == 'pull_request' }}
     runs-on: ubuntu-latest
@@ -136,30 +110,14 @@ jobs:
         with:
           node-version: 20
 
-      - name: Enable Corepack & activate pnpm@9
-        shell: bash
-        run: |
-          corepack enable
-          corepack prepare pnpm@9 --activate
-          pnpm -v
+      - name: Install pnpm (global)
+        run: npm i -g pnpm@9.12.0
 
-      - name: Compute pnpm store path
-        id: compute-store
-        shell: bash
-        run: echo "store-path=$(pnpm store path)" >> "$GITHUB_OUTPUT"
-
-      - name: Cache pnpm store
-        uses: actions/cache@v4
-        with:
-          path: ${{ steps.compute-store.outputs.store-path }}
-          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('pnpm-lock.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-pnpm-store-
+      - name: Verify pnpm
+        run: pnpm --version
 
       - name: Install deps
-        shell: bash
         run: pnpm install --frozen-lockfile=false
 
-      - name: Agent check (typecheck + lint-changed + unit tests)
-        shell: bash
+      - name: Agent check (typecheck + lint(agent) + build context + unit tests + validate)
         run: pnpm agent:check
