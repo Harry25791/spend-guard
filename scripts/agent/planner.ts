@@ -1,6 +1,5 @@
 // scripts/agent/planner.ts
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
 
 type PlanStep = {
   id: string;
@@ -20,7 +19,6 @@ type AgentConfig = {
 
 function readJson<T>(p: string): T {
   const raw = readFileSync(p, "utf8");
-  // We type this as unknown to avoid 'any' and unsafe assignments
   return JSON.parse(raw) as unknown as T;
 }
 
@@ -32,7 +30,7 @@ function sanitizeId(s: string): string {
 }
 
 function defaultTaskFromRoadmap(): string {
-  // Small, safe heuristic: first unchecked item ("- [ ] ...") in ROADMAP.md
+  // First unchecked item ("- [ ] ...") in ROADMAP.md
   try {
     const raw = readFileSync("ROADMAP.md", "utf8");
     const line = raw.split("\n").find((l) => /^\s*-\s*\[\s\]\s+/.test(l));
@@ -44,7 +42,7 @@ function defaultTaskFromRoadmap(): string {
 }
 
 function main() {
-  // Config (if present)
+  // Optional config
   let changeBudget = 400;
   try {
     const cfg = readJson<AgentConfig>(".agent/config.json");
@@ -52,7 +50,7 @@ function main() {
       changeBudget = cfg.planner.defaultChangeBudget;
     }
   } catch {
-    // optional; default stands
+    // default stands
   }
 
   const inputTask = (process.env.AGENT_TASK ?? "").trim();
@@ -70,7 +68,7 @@ function main() {
     touches: ["src/**", "tests/**"],
   };
 
-  // Keep legacy-style logging that tests/eyes expect
+  // Legacy-style log that our tests expect
   console.log("Planned step:", step);
 }
 
