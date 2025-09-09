@@ -6,36 +6,54 @@ function fail(msg: string): never {
   process.exit(1);
 }
 
+// Files that must exist
 const CFG = ".agent/config.json";
 const CTX = ".agent/context.json";
 
-// Must exist
 if (!existsSync(CFG)) fail("Missing .agent/config.json");
 if (!existsSync(CTX)) fail("Missing .agent/context.json");
 
-// Parse config
-let cfg: any;
+// Types + guards
+type AgentConfig = {
+  maxChangedLines: number;
+  maxContextKB?: number;
+};
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null;
+}
+
+function isAgentConfig(v: unknown): v is AgentConfig {
+  if (!isRecord(v)) return false;
+  const mcl = v["maxChangedLines"];
+  const mck = v["maxContextKB"];
+  const mclOk =
+    typeof mcl === "number" && Number.isInteger(mcl) && mcl > 0 && Number.isFinite(mcl);
+  const mckOk =
+    mck === undefined ||
+    (typeof mck === "number" && Number.isInteger(mck) && mck > 0 && Number.isFinite(mck));
+  return mclOk && mckOk;
+}
+
+// Parse config safely
+let cfgRaw = "";
+let cfgUnknown: unknown;
 try {
-  cfg = JSON.parse(readFileSync(CFG, "utf8"));
+  cfgRaw = readFileSync(CFG, "utf8");
+  cfgUnknown = JSON.parse(cfgRaw);
 } catch {
   fail("Invalid JSON in .agent/config.json");
 }
 
-if (
-  typeof cfg.maxChangedLines !== "number" ||
-  !Number.isInteger(cfg.maxChangedLines) ||
-  cfg.maxChangedLines <= 0
-) {
-  fail("config.maxChangedLines must be a positive integer");
+if (!isAgentConfig(cfgUnknown)) {
+  fail("Invalid structure in .agent/config.json (expected { maxChangedLines: number; maxContextKB?: number })");
 }
+const cfg: AgentConfig = cfgUnknown;
 
-// Optional cap for context size (KB). Default 512KB if not provided.
-const maxContextKB: number =
-  typeof cfg.maxContextKB === "number" && cfg.maxContextKB > 0
-    ? cfg.maxContextKB
-    : 512;
+// Defaults
+const maxContextKB = cfg.maxContextKB && cfg.maxContextKB > 0 ? cfg.maxContextKB : 512;
 
-// Parse/size context
+// Parse context and check size
 let ctxRaw = "";
 try {
   ctxRaw = readFileSync(CTX, "utf8");

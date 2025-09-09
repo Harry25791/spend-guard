@@ -7,7 +7,7 @@ function sh(cmd: string): string {
 }
 
 function run() {
-  // Try to diff against upstream main; fall back to all tracked files
+  // Determine changed files vs origin/main; fall back to all tracked
   let out = "";
   try {
     out = sh("git diff --name-only --diff-filter=ACMRTUXB origin/main...HEAD");
@@ -15,12 +15,20 @@ function run() {
     out = sh("git ls-files");
   }
 
+  const isCodeFile = (f: string) => /\.(tsx?|jsx?|mjs|cjs)$/.test(f);
+  const isIgnored = (f: string) =>
+    f.startsWith(".agent/") ||
+    f === ".agent" ||
+    f.startsWith("node_modules/") ||
+    f.startsWith(".next/") ||
+    /^eslint\.config\.(c|m)?js$/.test(f); // avoid linting ESLint config itself
+
   const changed = out
     .split("\n")
     .map((s) => s.trim())
     .filter(Boolean)
-    // Code files only
-    .filter((f) => /\.(tsx?|jsx?|mjs|cjs)$/.test(f));
+    .filter(isCodeFile)
+    .filter((f) => !isIgnored(f));
 
   let targets: string[] = [];
 
@@ -29,7 +37,7 @@ function run() {
     console.log("Linting changed files:");
     for (const f of targets) console.log(f);
   } else {
-    // Fallback: lint our agent scripts and agent tests only (NOT .agent/)
+    // Fallback to agent code & tests only
     const fallbackRoots = ["scripts/agent", "tests/agent"];
     targets = fallbackRoots.filter((p) => existsSync(p));
     console.log("No changed files; linting fallback:", targets.join(", "));
