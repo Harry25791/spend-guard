@@ -1,48 +1,77 @@
-import fs from 'node:fs';
-import { writeJSON } from './utils/fsx';
-import type { Plan, PlanStep } from './types';
+// scripts/agent/planner.ts
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
-
-function parseTasks(md: string): string[] {
-const lines = md.split(/\r?\n/);
-return lines.filter(l => /- \[ \]\s+/.test(l)).map(l => l.replace(/^- \[ \]\s+/, '').trim());
-}
-
-
-function toId(title: string) {
-return title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '').slice(0, 48);
-}
-
-
-function planFromRoadmap(): PlanStep {
-const cfg = JSON.parse(fs.readFileSync('.agent/config.json', 'utf8'));
-const budget: number = cfg.planner?.defaultChangeBudget ?? 200;
-let title = cfg.planner?.fallbackTask || 'Create initial agent seed test and TODO';
-if (fs.existsSync('ROADMAP.md')) {
-const raw = fs.readFileSync('ROADMAP.md', 'utf8');
-const tasks = parseTasks(raw);
-if (tasks.length) title = tasks[0];
-}
-return {
-id: toId(title),
-title,
-rationale: 'Smallest available task from ROADMAP.md to keep PRs safe and reviewable.',
-changeBudget: budget,
-acceptance: [
-'Given repo is installed, When running pnpm test:unit, Then tests pass',
-'Patch size stays within config.maxChangedLines',
-],
-touches: ['src/**', 'tests/**']
+type PlanStep = {
+  id: string;
+  title: string;
+  rationale: string;
+  changeBudget: number;
+  acceptance: string[];
+  touches: string[];
 };
+
+type AgentConfig = {
+  maxChangedLines: number;
+  planner?: {
+    defaultChangeBudget?: number;
+  };
+};
+
+function readJson<T>(p: string): T {
+  const raw = readFileSync(p, "utf8");
+  // We type this as unknown to avoid 'any' and unsafe assignments
+  return JSON.parse(raw) as unknown as T;
 }
 
+function sanitizeId(s: string): string {
+  return s
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function defaultTaskFromRoadmap(): string {
+  // Small, safe heuristic: first unchecked item ("- [ ] ...") in ROADMAP.md
+  try {
+    const raw = readFileSync("ROADMAP.md", "utf8");
+    const line = raw.split("\n").find((l) => /^\s*-\s*\[\s\]\s+/.test(l));
+    if (line) return line.replace(/^\s*-\s*\[\s\]\s+/, "").trim();
+  } catch {
+    // ignore
+  }
+  return "Create initial agent seed test and TODO";
+}
 
 function main() {
-const chosen = planFromRoadmap();
-const plan: Plan = { chosen, alternatives: [] };
-writeJSON('.agent/plan.json', plan);
-console.log('Planned step:', chosen);
-}
+  // Config (if present)
+  let changeBudget = 400;
+  try {
+    const cfg = readJson<AgentConfig>(".agent/config.json");
+    if (typeof cfg?.planner?.defaultChangeBudget === "number" && cfg.planner.defaultChangeBudget > 0) {
+      changeBudget = cfg.planner.defaultChangeBudget;
+    }
+  } catch {
+    // optional; default stands
+  }
 
+  const inputTask = (process.env.AGENT_TASK ?? "").trim();
+  const task = inputTask.length > 0 ? inputTask : defaultTaskFromRoadmap();
+
+  const step: PlanStep = {
+    id: sanitizeId(task.startsWith("Create ") ? task : `Create ${task}`),
+    title: task,
+    rationale: "Smallest available task from ROADMAP.md to keep PRs safe and reviewable.",
+    changeBudget,
+    acceptance: [
+      "Given repo is installed, When running pnpm test:unit, Then tests pass",
+      "Patch size stays within config.maxChangedLines",
+    ],
+    touches: ["src/**", "tests/**"],
+  };
+
+  // Keep legacy-style logging that tests/eyes expect
+  console.log("Planned step:", step);
+}
 
 main();

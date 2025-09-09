@@ -5,24 +5,25 @@ const CTX_PATH = ".agent/context.json";
 
 function ensureContextBuilt() {
   if (fs.existsSync(CTX_PATH)) return;
-  // First try the same script your CI uses
   try {
     execSync("pnpm agent:context", { stdio: "inherit" });
-    return;
   } catch {
-    // Fallback: invoke the builder directly via tsx
-    // (works in both local and CI where tsx is devDependency)
-    execSync("node --loader tsx ./scripts/agent/context/build-context.ts", {
-      stdio: "inherit",
-    });
+    execSync("node --loader tsx ./scripts/agent/context/build-context.ts", { stdio: "inherit" });
   }
+}
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null;
 }
 
 describe("context pack", () => {
   it("exists and is JSON", () => {
     ensureContextBuilt();
     const raw = fs.readFileSync(CTX_PATH, "utf8");
-    const obj = JSON.parse(raw);
-    expect(obj).toHaveProperty("generatedAt");
+    const obj: unknown = JSON.parse(raw);
+    expect(isRecord(obj)).toBe(true);
+    if (isRecord(obj)) {
+      expect(Object.prototype.hasOwnProperty.call(obj, "generatedAt")).toBe(true);
+    }
   });
 });

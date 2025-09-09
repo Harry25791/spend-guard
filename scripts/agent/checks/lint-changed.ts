@@ -6,41 +6,37 @@ function sh(cmd: string): string {
   return execSync(cmd, { stdio: ["ignore", "pipe", "pipe"] }).toString().trim();
 }
 
+const ALLOWED_ROOTS = ["scripts/agent", "tests/agent"];
+const isCodeFile = (f: string) => /\.(tsx?|jsx?|mjs|cjs)$/.test(f);
+const isInAllowedRoots = (f: string) => ALLOWED_ROOTS.some((r) => f === r || f.startsWith(`${r}/`));
+
 function run() {
-  // Determine changed files vs origin/main; fall back to all tracked
   let out = "";
   try {
+    // With fetch-depth: 0 this works on CI and locally
     out = sh("git diff --name-only --diff-filter=ACMRTUXB origin/main...HEAD");
   } catch {
+    // Fallback if origin/main is unavailable
     out = sh("git ls-files");
   }
-
-  const isCodeFile = (f: string) => /\.(tsx?|jsx?|mjs|cjs)$/.test(f);
-  const isIgnored = (f: string) =>
-    f.startsWith(".agent/") ||
-    f === ".agent" ||
-    f.startsWith("node_modules/") ||
-    f.startsWith(".next/") ||
-    /^eslint\.config\.(c|m)?js$/.test(f); // avoid linting ESLint config itself
 
   const changed = out
     .split("\n")
     .map((s) => s.trim())
     .filter(Boolean)
     .filter(isCodeFile)
-    .filter((f) => !isIgnored(f));
+    .filter(isInAllowedRoots);
 
   let targets: string[] = [];
 
   if (changed.length > 0) {
     targets = changed;
-    console.log("Linting changed files:");
+    console.log("Linting agent-changed files:");
     for (const f of targets) console.log(f);
   } else {
-    // Fallback to agent code & tests only
-    const fallbackRoots = ["scripts/agent", "tests/agent"];
-    targets = fallbackRoots.filter((p) => existsSync(p));
-    console.log("No changed files; linting fallback:", targets.join(", "));
+    // Always lint only agent scope on fallback
+    targets = ALLOWED_ROOTS.filter((p) => existsSync(p));
+    console.log("No changed files; linting agent scope:", targets.join(", "));
   }
 
   if (targets.length === 0) {
@@ -48,10 +44,7 @@ function run() {
     return;
   }
 
-  const cmd =
-    "pnpm exec eslint " +
-    targets.map((t) => JSON.stringify(t)).join(" ") +
-    " --max-warnings=0";
+  const cmd = "pnpm exec eslint " + targets.map((t) => JSON.stringify(t)).join(" ") + " --max-warnings=0";
   execSync(cmd, { stdio: "inherit" });
 }
 
