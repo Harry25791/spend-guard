@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import { execSync } from "node:child_process";
+import { describe, it, expect } from "vitest";
 
 const CTX_PATH = ".agent/context.json";
 
@@ -8,7 +9,10 @@ function ensureContextBuilt() {
   try {
     execSync("pnpm agent:context", { stdio: "inherit" });
   } catch {
-    execSync("node --loader tsx ./scripts/agent/context/build-context.ts", { stdio: "inherit" });
+    // Fallback: run the builder directly
+    execSync("node --loader tsx ./scripts/agent/context/build-context.ts", {
+      stdio: "inherit",
+    });
   }
 }
 
