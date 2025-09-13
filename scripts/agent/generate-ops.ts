@@ -158,7 +158,7 @@ async function main() {
           { role: "user", content: JSON.stringify(userPayload) },
         ],
         temperature: 0.2,
-        max_tokens: 1200,
+        max_completion_tokens: 1200,
         response_format: { type: "json_object" },
       }),
     });
