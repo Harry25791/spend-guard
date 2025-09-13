@@ -108,8 +108,9 @@ export function applyOps(planPath = ".agent/ops.json"): { applied: number } {
     throw new Error(`ops plan not found: ${planPath}`);
   }
   const raw = fs.readFileSync(planPath, "utf8");
-  const plan = JSON.parse(raw) as unknown as OpsPlan;
-  if (!plan || !Array.isArray(plan.ops)) throw new Error("invalid ops plan");
+  const planUnknown: unknown = JSON.parse(raw);
+  if (!isOpsPlan(planUnknown)) throw new Error("invalid ops plan");
+  const plan = planUnknown; // narrowed by guard
 
   let applied = 0;
   for (const op of plan.ops) {
@@ -146,7 +147,6 @@ export function applyOps(planPath = ".agent/ops.json"): { applied: number } {
 // ─────────────────────────────────────────────────────────────────────────────
 // Type guards (no unnecessary assertions)
 // ─────────────────────────────────────────────────────────────────────────────
-
 function isRecord(v: unknown): v is Record<string, unknown> {
   return v !== null && typeof v === "object";
 }

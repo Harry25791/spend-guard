@@ -56,7 +56,7 @@ if (!isAgentConfig(cfgUnknown)) {
     "Invalid structure in .agent/config.json (expected { maxChangedLines: number; maxContextKB?: number })"
   );
 }
-const cfg: AgentConfig = cfgUnknown as AgentConfig; // safe due to guard above
+const cfg: AgentConfig = cfgUnknown; // guard above ensures type
 
 const maxContextKB = cfg.maxContextKB && cfg.maxContextKB > 0 ? cfg.maxContextKB : 512;
 
@@ -81,11 +81,27 @@ const AGENT_DIR = ".agent";
 const PROMPTS_DIR = path.join(AGENT_DIR, "prompts");
 const RULES_PATH = path.join(AGENT_DIR, "prompt-rules.json");
 
+function isStringArray(x: unknown): x is string[] {
+  return Array.isArray(x) && x.every((s) => typeof s === "string");
+}
+function isPromptRules(x: unknown): x is PromptRules {
+  if (!isRecord(x)) return false;
+  const r = x as Record<string, unknown>;
+  if ("requiredSections" in r && r.requiredSections !== undefined && !isStringArray(r.requiredSections)) return false;
+  if ("bannedPhrases" in r && r.bannedPhrases !== undefined && !isStringArray(r.bannedPhrases)) return false;
+  if ("maxChars" in r && r.maxChars !== undefined && typeof r.maxChars !== "number") return false;
+  if ("maxLines" in r && r.maxLines !== undefined && typeof r.maxLines !== "number") return false;
+  return true;
+}
+
 function loadRules(): PromptRules {
   if (existsSync(RULES_PATH)) {
     try {
-      const parsed = JSON.parse(readFileSync(RULES_PATH, "utf8"));
-      return parsed; // rely on structural typing; no assertion
+      const parsedUnknown: unknown = JSON.parse(readFileSync(RULES_PATH, "utf8"));
+      if (!isPromptRules(parsedUnknown)) {
+        fail("Invalid structure in .agent/prompt-rules.json");
+      }
+      return parsedUnknown;
     } catch {
       fail("Invalid JSON in .agent/prompt-rules.json");
     }
@@ -96,6 +112,7 @@ function loadRules(): PromptRules {
     maxChars: 12000
   };
 }
+
 function escapeForRegExp(s: string) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
