@@ -158,7 +158,7 @@ async function main() {
       return;
     }
 
-    const out = parsed as OpsPlan;
+    const out = parsed; // narrowed by isOpsPlan
     fs.writeFileSync(".agent/ops.json", JSON.stringify(out, null, 2));
     console.log(`[gen-ops] Wrote .agent/ops.json with ${out.ops.length} ops.`);
   } catch (e) {

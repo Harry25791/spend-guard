@@ -1,1 +1,2 @@
-import { describe, it, expect } from 'vitest';\ndescribe('example', () => { it('works', () => { expect(1+1).toBe(2); }); });
+import { describe, it, expect } from 'vitest';
+describe('example', () => { it('works', () => { expect(1+1).toBe(2); }); });

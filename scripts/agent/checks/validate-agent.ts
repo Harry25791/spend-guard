@@ -41,9 +41,9 @@ try {
 }
 function isAgentConfig(v: unknown): v is AgentConfig {
   if (!isRecord(v)) return false;
-  const m = v as Record<string, unknown>;
-  const mcl = m["maxChangedLines"];
-  const mck = m["maxContextKB"];
+  const m = v; // narrowed by isRecord
+  const mcl = (m as Record<string, unknown>)["maxChangedLines"];
+  const mck = (m as Record<string, unknown>)["maxContextKB"];
   const mclOk =
     typeof mcl === "number" && Number.isInteger(mcl) && mcl > 0 && Number.isFinite(mcl);
   const mckOk =
@@ -56,7 +56,8 @@ if (!isAgentConfig(cfgUnknown)) {
     "Invalid structure in .agent/config.json (expected { maxChangedLines: number; maxContextKB?: number })"
   );
 }
-const cfg: AgentConfig = cfgUnknown;
+const cfg: AgentConfig = cfgUnknown; // guard above ensures type
+
 const maxContextKB = cfg.maxContextKB && cfg.maxContextKB > 0 ? cfg.maxContextKB : 512;
 
 // Context size check
@@ -80,10 +81,27 @@ const AGENT_DIR = ".agent";
 const PROMPTS_DIR = path.join(AGENT_DIR, "prompts");
 const RULES_PATH = path.join(AGENT_DIR, "prompt-rules.json");
 
+function isStringArray(x: unknown): x is string[] {
+  return Array.isArray(x) && x.every((s) => typeof s === "string");
+}
+function isPromptRules(x: unknown): x is PromptRules {
+  if (!isRecord(x)) return false;
+  const r = x as Record<string, unknown>;
+  if ("requiredSections" in r && r.requiredSections !== undefined && !isStringArray(r.requiredSections)) return false;
+  if ("bannedPhrases" in r && r.bannedPhrases !== undefined && !isStringArray(r.bannedPhrases)) return false;
+  if ("maxChars" in r && r.maxChars !== undefined && typeof r.maxChars !== "number") return false;
+  if ("maxLines" in r && r.maxLines !== undefined && typeof r.maxLines !== "number") return false;
+  return true;
+}
+
 function loadRules(): PromptRules {
   if (existsSync(RULES_PATH)) {
     try {
-      return JSON.parse(readFileSync(RULES_PATH, "utf8")) as PromptRules;
+      const parsedUnknown: unknown = JSON.parse(readFileSync(RULES_PATH, "utf8"));
+      if (!isPromptRules(parsedUnknown)) {
+        fail("Invalid structure in .agent/prompt-rules.json");
+      }
+      return parsedUnknown;
     } catch {
       fail("Invalid JSON in .agent/prompt-rules.json");
     }
@@ -94,6 +112,7 @@ function loadRules(): PromptRules {
     maxChars: 12000
   };
 }
+
 function escapeForRegExp(s: string) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -163,12 +182,11 @@ function validateOpsSchema() {
   }
 
   if (!isOpsPlan(dataUnknown)) {
-    // If it's close to a plan, try to hint which ops fail
     if (isRecord(dataUnknown)) {
       const maybeOps = (dataUnknown as Record<string, unknown>)["ops"];
       if (Array.isArray(maybeOps)) {
-        const bad = (maybeOps as unknown[])
-          .map((op, i) => ({ i, ok: isOp(op) }))
+        const bad = maybeOps
+          .map((op: unknown, i: number) => ({ i, ok: isOp(op) }))
           .filter((x) => !x.ok)
           .map((x) => x.i);
         if (bad.length) {
