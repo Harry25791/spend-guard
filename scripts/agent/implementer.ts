@@ -24,7 +24,7 @@ function main() {
       console.log('[agent] No .agent/plan.json → planning…');
       execSync('pnpm -s agent:plan', { stdio: 'inherit' });
     }
-  } catch (e) {
+  } catch (_e) {
     console.error('[agent] Failed to generate .agent/context.json or .agent/plan.json');
     process.exit(1);
   }
