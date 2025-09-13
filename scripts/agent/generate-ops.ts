@@ -158,9 +158,9 @@ async function main() {
       return;
     }
 
-    const out = parsed as OpsPlan;
-    fs.writeFileSync(".agent/ops.json", JSON.stringify(out, null, 2));
-    console.log(`[gen-ops] Wrote .agent/ops.json with ${out.ops.length} ops.`);
+    const out = parsed; // narrowed by isOpsPlan
+    fs.writeFileSync(".agent/ops.json", JSON.stringify(out as OpsPlan, null, 2));
+    console.log(`[gen-ops] Wrote .agent/ops.json with ${(out as OpsPlan).ops.length} ops.`);
   } catch (e) {
     console.log(`[gen-ops] Request failed: ${(e as Error).message}`);
   }

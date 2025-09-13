@@ -144,31 +144,29 @@ export function applyOps(planPath = ".agent/ops.json"): { applied: number } {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Type guards (no `any`)
+// Type guards (no unnecessary assertions)
 // ─────────────────────────────────────────────────────────────────────────────
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return v !== null && typeof v === "object";
 }
-
 function hasString(v: Record<string, unknown>, key: string): v is Record<string, string> {
   return typeof v[key] === "string";
 }
-function hasBoolean(v: Record<string, unknown>, key: string): boolean {
+function hasBooleanFlag(v: Record<string, unknown>, key: string): boolean {
   return typeof v[key] === "boolean";
 }
 
 export function isOp(value: unknown): value is Op {
   if (!isRecord(value)) return false;
   const v = value as Record<string, unknown>;
-  if (!hasString(v, "op")) return false;
 
+  if (!hasString(v, "op")) return false;
   const opVal = v.op;
+
   if (opVal !== "insertAfter" && opVal !== "replaceBlock" && opVal !== "addImport" && opVal !== "addTest") {
     return false;
   }
-
-  // common: file must be string when present
   if (!hasString(v, "file")) return false;
 
   if (opVal === "insertAfter") {
@@ -183,7 +181,7 @@ export function isOp(value: unknown): value is Op {
     const specUnknown = v["spec"];
     if (!isRecord(specUnknown)) return false;
     const s = specUnknown as Record<string, unknown>;
-    if (!hasString(s as Record<string, unknown>, "from")) return false;
+    if (!hasString(s, "from")) return false;
 
     if ("names" in s && s.names !== undefined) {
       if (!Array.isArray(s.names) || !s.names.every((n) => typeof n === "string")) return false;
@@ -192,7 +190,7 @@ export function isOp(value: unknown): value is Op {
       if (typeof s.default !== "string") return false;
     }
     if ("typeOnly" in s && s.typeOnly !== undefined) {
-      if (!hasBoolean(s, "typeOnly")) return false;
+      if (!hasBooleanFlag(s, "typeOnly")) return false;
     }
     return true;
   }
@@ -207,6 +205,7 @@ export function isOp(value: unknown): value is Op {
 export function isOpsPlan(value: unknown): value is OpsPlan {
   if (!isRecord(value)) return false;
   const v = value as Record<string, unknown>;
+
   if (!hasString(v, "id")) return false;
 
   const ops = v["ops"];
