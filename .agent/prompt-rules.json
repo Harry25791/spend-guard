@@ -1,0 +1,18 @@
+{
+  "requiredSections": [
+    "## Task",
+    "## Context",
+    "## Constraints",
+    "## Rules",
+    "## Output"
+  ],
+  "bannedPhrases": [
+    "as an ai",
+    "i can't",
+    "i cannot",
+    "cannot assist",
+    "sorry, i"
+  ],
+  "maxChars": 16000,
+  "maxLines": 400
+}
