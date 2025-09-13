@@ -1,11 +1,10 @@
-name: "agent-lite-gate"
+name: agent-lite-gate
 
 on:
   workflow_run:
     workflows:
-      - "Agent Lite"                       # matches the explicit name above
-      - "agent-lite"                       # backward compatibility if the name is lowercased
-      - ".github/workflows/agent-lite.yml" # fallback when GitHub shows the file path
+      - "agent-lite"                       # canonical name
+      - ".github/workflows/agent-lite.yml" # fallback if GitHub surfaces by path
     types: [completed]
 
 permissions:
@@ -15,7 +14,7 @@ permissions:
 
 jobs:
   gate:
-    # Only re-run checks when the dispatch workflow completed successfully
+    # Only proceed when the dispatch workflow completed successfully
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     name: Re-run agent:check on PR branch and publish "agent-lite / check" status
@@ -29,7 +28,6 @@ jobs:
             const owner = context.repo.owner;
             const repo = context.repo.repo;
 
-            // Fetch most recent open PRs and pick the newest Agent Lite PR from the bot
             const { data: prs } = await github.rest.pulls.list({
               owner, repo, state: 'open', sort: 'created', direction: 'desc', per_page: 20
             });

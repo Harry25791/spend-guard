@@ -1,4 +1,4 @@
-name: "Agent Lite"
+name: agent-lite
 
 on:
   workflow_dispatch:
