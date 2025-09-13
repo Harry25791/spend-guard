@@ -4,6 +4,7 @@ import { execSync } from 'node:child_process';
 import { ensureDir } from './utils/fsx';
 import { createBranch, ensureCleanTreeOrAutostash, stageAllAndCommit, hasChanges } from './utils/git';
 import type { Plan } from './types';
+import { applyOps } from './ops/apply-ops';
 
 function ts() {
   const d = new Date();
@@ -37,27 +38,40 @@ function main() {
   const branch = `${cfg.branchPrefix}${plan.chosen.id}-${stamp}`;
   createBranch(branch);
 
-  // Write a tiny TODO marker (unique filename)
-  const todoDir = path.join('src','agent');
-  ensureDir(todoDir);
-  const todoPath = path.join(todoDir, `TODO-${plan.chosen.id}-${stamp}.md`);
-  const body = `# ${plan.chosen.title}\n\nRationale: ${plan.chosen.rationale}\n\nAcceptance Criteria:\n${plan.chosen.acceptance.map(a=>`- ${a}`).join('\n')}\n`;
-  fs.writeFileSync(todoPath, body);
+  let wroteSomething = false;
 
-  // Seed unit test (unique filename)
-  const testDir = path.join('tests','agent');
-  ensureDir(testDir);
-  const smokePath = path.join(testDir, `smoke-${stamp}.test.ts`);
-  fs.writeFileSync(smokePath, `import { describe, it, expect } from 'vitest';\n\ndescribe('agent smoke ${stamp}', () => {\n  it('vitest is running', () => { expect(1+1).toBe(2); });\n});\n`);
+  // If ops plan exists, apply deterministic edits
+  if (fs.existsSync('.agent/ops.json')) {
+    try {
+      const { applied } = applyOps('.agent/ops.json');
+      console.log(`[agent] applied ops: ${applied}`);
+      wroteSomething = applied > 0;
+    } catch (err) {
+      console.error(`[agent] ops application failed: ${(err as Error).message}`);
+      process.exit(1);
+    }
+  }
 
-  // If, for any reason, no diff is detected, append a heartbeat line to the TODO
-  if (!hasChanges()) {
-    fs.appendFileSync(todoPath, `\n- Heartbeat: ${new Date().toISOString()}\n`);
+  // Fallback: seed TODO + smoke test (keeps loop green)
+  if (!wroteSomething) {
+    const todoDir = path.join('src','agent');
+    ensureDir(todoDir);
+    const todoPath = path.join(todoDir, `TODO-${plan.chosen.id}-${stamp}.md`);
+    const body = `# ${plan.chosen.title}\n\nRationale: ${plan.chosen.rationale}\n\nAcceptance Criteria:\n${plan.chosen.acceptance.map(a=>`- ${a}`).join('\n')}\n`;
+    fs.writeFileSync(todoPath, body);
+
+    const testDir = path.join('tests','agent');
+    ensureDir(testDir);
+    const smokePath = path.join(testDir, `smoke-${stamp}.test.ts`);
+    fs.writeFileSync(smokePath, `import { describe, it, expect } from 'vitest';\n\ndescribe('agent smoke ${stamp}', () => {\n  it('vitest is running', () => { expect(1+1).toBe(2); });\n});\n`);
+
+    if (!hasChanges()) {
+      fs.appendFileSync(todoPath, `\n- Heartbeat: ${new Date().toISOString()}\n`);
+    }
   }
 
   stageAllAndCommit(`chore(agent): seed for ${plan.chosen.title}`);
   console.log('Branch prepared:', branch);
-  console.log('Wrote:', todoPath, 'and', smokePath);
 }
 
 main();
