@@ -7,7 +7,6 @@ export type InsertAfter = {
   anchor: string;
   text: string;
 };
-
 export type ReplaceBlock = {
   op: "replaceBlock";
   file: string;
@@ -15,7 +14,6 @@ export type ReplaceBlock = {
   end: string;
   text: string;
 };
-
 export type AddImport = {
   op: "addImport";
   file: string;
@@ -26,13 +24,11 @@ export type AddImport = {
     typeOnly?: boolean;
   };
 };
-
 export type AddTest = {
   op: "addTest";
   file: string;
   text: string;
 };
-
 export type Op = InsertAfter | ReplaceBlock | AddImport | AddTest;
 
 export type OpsPlan = {
@@ -44,7 +40,6 @@ export type OpsPlan = {
 function ensureParentDir(p: string) {
   fs.mkdirSync(path.dirname(p), { recursive: true });
 }
-
 function detectEOL(s: string): "\n" | "\r\n" {
   return s.includes("\r\n") ? "\r\n" : "\n";
 }
@@ -110,7 +105,7 @@ export function applyOps(planPath = ".agent/ops.json"): { applied: number } {
   const raw = fs.readFileSync(planPath, "utf8");
   const planUnknown: unknown = JSON.parse(raw);
   if (!isOpsPlan(planUnknown)) throw new Error("invalid ops plan");
-  const plan = planUnknown; // narrowed by guard
+  const plan = planUnknown;
 
   let applied = 0;
   for (const op of plan.ops) {
@@ -159,10 +154,10 @@ function hasBooleanFlag(v: Record<string, unknown>, key: string): boolean {
 
 export function isOp(value: unknown): value is Op {
   if (!isRecord(value)) return false;
-  const v = value as Record<string, unknown>;
+  const v = value; // narrowed
 
   if (!hasString(v, "op")) return false;
-  const opVal = v.op;
+  const opVal = (v as Record<string, unknown>).op;
 
   if (opVal !== "insertAfter" && opVal !== "replaceBlock" && opVal !== "addImport" && opVal !== "addTest") {
     return false;
@@ -178,18 +173,19 @@ export function isOp(value: unknown): value is Op {
   }
 
   if (opVal === "addImport") {
-    const specUnknown = v["spec"];
+    const specUnknown = (v as Record<string, unknown>)["spec"];
     if (!isRecord(specUnknown)) return false;
-    const s = specUnknown as Record<string, unknown>;
-    if (!hasString(s, "from")) return false;
+    const s = specUnknown; // narrowed
 
-    if ("names" in s && s.names !== undefined) {
-      if (!Array.isArray(s.names) || !s.names.every((n) => typeof n === "string")) return false;
+    if (!hasString(s, "from")) return false;
+    if ("names" in s && (s as Record<string, unknown>).names !== undefined) {
+      const names = (s as Record<string, unknown>).names;
+      if (!Array.isArray(names) || !names.every((n) => typeof n === "string")) return false;
     }
-    if ("default" in s && s.default !== undefined) {
-      if (typeof s.default !== "string") return false;
+    if ("default" in s && (s as Record<string, unknown>).default !== undefined) {
+      if (typeof (s as Record<string, unknown>).default !== "string") return false;
     }
-    if ("typeOnly" in s && s.typeOnly !== undefined) {
+    if ("typeOnly" in s && (s as Record<string, unknown>).typeOnly !== undefined) {
       if (!hasBooleanFlag(s, "typeOnly")) return false;
     }
     return true;
@@ -204,16 +200,17 @@ export function isOp(value: unknown): value is Op {
 
 export function isOpsPlan(value: unknown): value is OpsPlan {
   if (!isRecord(value)) return false;
-  const v = value as Record<string, unknown>;
+  const v = value; // narrowed
 
   if (!hasString(v, "id")) return false;
 
-  const ops = v["ops"];
+  const ops = (v as Record<string, unknown>)["ops"];
   if (!Array.isArray(ops)) return false;
   if (!ops.every((o) => isOp(o))) return false;
 
-  if ("acceptance" in v && v.acceptance !== undefined) {
-    if (!Array.isArray(v.acceptance) || !v.acceptance.every((s) => typeof s === "string")) {
+  if ("acceptance" in v && (v as Record<string, unknown>).acceptance !== undefined) {
+    const acc = (v as Record<string, unknown>).acceptance;
+    if (!Array.isArray(acc) || !acc.every((s) => typeof s === "string")) {
       return false;
     }
   }

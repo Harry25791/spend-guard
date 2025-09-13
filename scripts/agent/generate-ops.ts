@@ -1,5 +1,4 @@
 import fs from "node:fs";
-import type { OpsPlan } from "./ops/apply-ops";
 import { isOpsPlan } from "./ops/apply-ops";
 
 type Plan = {
