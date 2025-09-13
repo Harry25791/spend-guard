@@ -1,9 +1,7 @@
-// scripts/agent/generate-ops.ts
 import fs from "node:fs";
 import type { OpsPlan } from "./ops/apply-ops";
 import { isOpsPlan } from "./ops/apply-ops";
 
-// ---- Local types -------------------------------------------------------------
 type Plan = {
   chosen: {
     id: string;
@@ -14,60 +12,33 @@ type Plan = {
     touches: string[];
   };
 };
-
-type AgentConfig = {
-  maxChangedLines: number;
-  allowPaths?: string[];
-  forbidPaths?: string[];
-};
-
-type Ctx = {
-  summary?: unknown;
-  repoHints?: unknown;
-};
-
+type AgentConfig = { maxChangedLines: number; allowPaths?: string[]; forbidPaths?: string[] };
+type Ctx = { summary?: unknown; repoHints?: unknown };
 type ChatMessage = { content?: string | null };
 type ChatChoice = { message?: ChatMessage | null };
 type ChatCompletion = { choices?: ChatChoice[] | null };
-// -----------------------------------------------------------------------------
 
 const PROMPT_PATH = ".agent/prompts/generate-ops.md";
 
 function readJson<T>(p: string): T | null {
-  try {
-    return JSON.parse(fs.readFileSync(p, "utf8")) as T;
-  } catch {
-    return null;
-  }
+  try { return JSON.parse(fs.readFileSync(p, "utf8")) as T; } catch { return null; }
 }
-
 function readPrompt(): string | null {
-  try {
-    if (fs.existsSync(PROMPT_PATH)) {
-      return fs.readFileSync(PROMPT_PATH, "utf8");
-    }
-  } catch {}
+  try { if (fs.existsSync(PROMPT_PATH)) return fs.readFileSync(PROMPT_PATH, "utf8"); } catch {}
   return null;
 }
-
 function stripCodeFence(s: string): string {
-  const m =
-    s.match(/```json\s*([\s\S]*?)```/i) ??
-    s.match(/```\s*([\s\S]*?)```/);
+  const m = s.match(/```json\s*([\s\S]*?)```/i) ?? s.match(/```\s*([\s\S]*?)```/);
   return m ? m[1].trim() : s.trim();
 }
-
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null;
 }
-
 function isChatCompletion(v: unknown): v is ChatCompletion {
   if (!isRecord(v)) return false;
   const choices = (v as { choices?: unknown }).choices;
   return Array.isArray(choices);
 }
-
-// -----------------------------------------------------------------------------
 
 async function main() {
   const key = process.env.OPENAI_API_KEY?.trim();
@@ -90,14 +61,13 @@ async function main() {
   const allow = cfg.allowPaths ?? ["src/**", "tests/**"];
   const forbid = cfg.forbidPaths ?? [];
 
-  // Try to load the external prompt; fall back to a compact inline system prompt
   const filePrompt = readPrompt();
   const system = filePrompt
     ? `${filePrompt.trim()}\n\nImportant: Return ONLY a single JSON object that matches the OpsPlan schema. No prose, no code fences.`
     : [
         "You are Agent-Lite, a surgical code patcher.",
         "Return ONLY a compact JSON object that matches the OpsPlan schema (no prose, no code fences).",
-        "Stay within the patch budget; avoid incidental churn and reformatting.",
+        "Stay within the patch budget; avoid incidental churn and reformatting."
       ].join(" ");
 
   const userPayload = {
@@ -112,13 +82,13 @@ async function main() {
         "Prefer adding small new files over editing very large files.",
         "If editing a large file, isolate changes and avoid reformatting.",
         "Update/add tests when behavior changes.",
-        "Keep ops minimal; no unrelated edits.",
-      ],
+        "Keep ops minimal; no unrelated edits."
+      ]
     },
     plan: plan.chosen,
     context: {
-      summary: (ctx as Ctx).summary ?? null,
-      repoHints: (ctx as Ctx).repoHints ?? null,
+      summary: ctx.summary ?? null,
+      repoHints: ctx.repoHints ?? null
     },
     schema: {
       id: "string",
@@ -129,38 +99,30 @@ async function main() {
         {
           op: "addImport",
           file: "string",
-          spec: {
-            from: "string",
-            names: "string[] (optional)",
-            default: "string (optional)",
-            typeOnly: "boolean (optional)"
-          }
+          spec: { from: "string", names: "string[] (optional)", default: "string (optional)", typeOnly: "boolean (optional)" }
         },
         { op: "addTest", file: "string", text: "string" }
       ]
     }
   };
 
-  const model = (process.env.OPENAI_MODEL?.trim() || "gpt-5");
+  const model = process.env.OPENAI_MODEL?.trim() || "gpt-5";
   const url = process.env.OPENAI_BASE_URL?.trim() || "https://api.openai.com/v1/chat/completions";
 
   try {
     const res = await fetch(url, {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${key}`,
-        "Content-Type": "application/json",
-      },
+      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
       body: JSON.stringify({
         model,
         messages: [
           { role: "system", content: system },
-          { role: "user", content: JSON.stringify(userPayload) },
+          { role: "user", content: JSON.stringify(userPayload) }
         ],
-        temperature: 1,
-        max_completion_tokens: 2000,
-        response_format: { type: "json_object" },
-      }),
+        temperature: 0.2,
+        max_tokens: 1200,
+        response_format: { type: "json_object" }
+      })
     });
 
     if (!res.ok) {
@@ -196,11 +158,12 @@ async function main() {
       return;
     }
 
-    fs.writeFileSync(".agent/ops.json", JSON.stringify(parsed, null, 2));
-    console.log(`[gen-ops] Wrote .agent/ops.json with ${(parsed as OpsPlan).ops.length} ops.`);
+    const out = parsed as OpsPlan;
+    fs.writeFileSync(".agent/ops.json", JSON.stringify(out, null, 2));
+    console.log(`[gen-ops] Wrote .agent/ops.json with ${out.ops.length} ops.`);
   } catch (e) {
     console.log(`[gen-ops] Request failed: ${(e as Error).message}`);
   }
 }
 
-main();
+void main();
