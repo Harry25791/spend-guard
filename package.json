@@ -21,6 +21,7 @@
     "agent:patch-guard": "tsx scripts/agent/checks/patch-guard.ts",
     "agent:check": "pnpm -s typecheck && pnpm -s lint:changed && pnpm -s agent:context && pnpm -s agent:patch-guard && pnpm -s test:unit && pnpm -s agent:validate",
 
+    "agent:gen-ops": "tsx scripts/agent/generate-ops.ts",
     "agent:run": "pnpm agent:context && pnpm agent:plan && pnpm agent:impl && pnpm agent:check",
     "agent:doctor": "tsx scripts/agent/doctor.ts"
   },
