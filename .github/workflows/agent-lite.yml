@@ -115,25 +115,55 @@ jobs:
   check:
     if: ${{ github.event_name == 'pull_request' }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      statuses: write    # <-- add this
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 20
-
       - name: Install pnpm (global)
         run: npm i -g pnpm@9.12.0
-
       - name: Verify pnpm
         run: pnpm --version
-
       - name: Install deps
         run: pnpm install --frozen-lockfile=false
-
       - name: Agent check (typecheck + lint(agent) + build context + unit tests + validate)
         run: pnpm agent:check
+
+      # NEW: publish a stable commit status so Branch Protection can see/select it
+      - name: Publish status (success)
+        if: ${{ success() }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const sha = context.payload.pull_request?.head?.sha || context.sha;
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha,
+              state: 'success',
+              context: 'agent-lite / check',
+              description: 'Checks passed'
+            });
+
+      - name: Publish status (failure)
+        if: ${{ failure() }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const sha = context.payload.pull_request?.head?.sha || context.sha;
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha,
+              state: 'failure',
+              context: 'agent-lite / check',
+              description: 'Checks failed'
+            });
+
