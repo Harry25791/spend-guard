@@ -107,7 +107,7 @@ jobs:
             }
 
       - name: PR link
-        run: echo "PR opened: ${{ steps.create-pr.outputs.url }}"
+        run: echo "PR opened:${{ steps.create-pr.outputs.url }}"
 
   check:
     if: ${{ github.event_name == 'pull_request' }}
