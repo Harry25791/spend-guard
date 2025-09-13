@@ -1,3 +1,4 @@
+// scripts/agent/checks/validate-agent.ts
 import { readFileSync, existsSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { isOp, isOpsPlan } from "../ops/apply-ops";
@@ -31,8 +32,11 @@ type PromptRules = {
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null;
 }
+function isPositiveInt(n: unknown): n is number {
+  return typeof n === "number" && Number.isInteger(n) && n > 0 && Number.isFinite(n);
+}
 
-// Config parsing
+// Config parsing + validation
 let cfgUnknown: unknown;
 try {
   cfgUnknown = JSON.parse(readFileSync(CFG, "utf8"));
@@ -41,25 +45,17 @@ try {
 }
 function isAgentConfig(v: unknown): v is AgentConfig {
   if (!isRecord(v)) return false;
-  const m = v; // narrowed by isRecord
-  const mcl = (m as Record<string, unknown>)["maxChangedLines"]; // ← temp cast removed below
-  const mck = (m as Record<string, unknown>)["maxContextKB"];   // ← temp cast removed below
-  // After narrowing, v already is Record<string, unknown>, so we can index directly:
-  const mm = v as Record<string, unknown>;
-  const okMcl = typeof mm["maxChangedLines"] === "number" && Number.isInteger(mm["maxChangedLines"] as number) && (mm["maxChangedLines"] as number) > 0 && Number.isFinite(mm["maxChangedLines"] as number);
-  const okMck =
-    mm["maxContextKB"] === undefined ||
-    (typeof mm["maxContextKB"] === "number" && Number.isInteger(mm["maxContextKB"] as number) && (mm["maxContextKB"] as number) > 0 && Number.isFinite(mm["maxContextKB"] as number));
+  const m = v;
+  const mcl = (m as Record<string, unknown>).maxChangedLines;
+  const mck = (m as Record<string, unknown>).maxContextKB;
+  const okMcl = isPositiveInt(mcl);
+  const okMck = mck === undefined || isPositiveInt(mck);
   return okMcl && okMck;
 }
 if (!isAgentConfig(cfgUnknown)) {
-  fail(
-    "Invalid structure in .agent/config.json (expected { maxChangedLines: number; maxContextKB?: number })"
-  );
+  fail("Invalid structure in .agent/config.json (expected { maxChangedLines: number; maxContextKB?: number })");
 }
-// After the guard above, cfgUnknown is AgentConfig
-const cfg = cfgUnknown as AgentConfig; // (TS narrows; this line will not be flagged as “unnecessary assertion” by eslint in practice)
-// If your linter still flags the line above, replace with: const cfg = cfgUnknown as unknown as AgentConfig;
+const cfg = cfgUnknown; // narrowed by guard above
 
 const maxContextKB = cfg.maxContextKB && cfg.maxContextKB > 0 ? cfg.maxContextKB : 512;
 
@@ -89,22 +85,20 @@ function isStringArray(x: unknown): x is string[] {
 }
 function isPromptRules(x: unknown): x is PromptRules {
   if (!isRecord(x)) return false;
-  const r = x;
-  if ("requiredSections" in r && (r as Record<string, unknown>).requiredSections !== undefined && !isStringArray((r as Record<string, unknown>).requiredSections)) return false;
-  if ("bannedPhrases" in r && (r as Record<string, unknown>).bannedPhrases !== undefined && !isStringArray((r as Record<string, unknown>).bannedPhrases)) return false;
-  if ("maxChars" in r && (r as Record<string, unknown>).maxChars !== undefined && typeof (r as Record<string, unknown>).maxChars !== "number") return false;
-  if ("maxLines" in r && (r as Record<string, unknown>).maxLines !== undefined && typeof (r as Record<string, unknown>).maxLines !== "number") return false;
+  const r = x as Record<string, unknown>;
+  if ("requiredSections" in r && r.requiredSections !== undefined && !isStringArray(r.requiredSections)) return false;
+  if ("bannedPhrases" in r && r.bannedPhrases !== undefined && !isStringArray(r.bannedPhrases)) return false;
+  if ("maxChars" in r && r.maxChars !== undefined && typeof r.maxChars !== "number") return false;
+  if ("maxLines" in r && r.maxLines !== undefined && typeof r.maxLines !== "number") return false;
   return true;
 }
 
 function loadRules(): PromptRules {
   if (existsSync(RULES_PATH)) {
     try {
-      const obj = JSON.parse(readFileSync(RULES_PATH, "utf8"));
-      if (!isPromptRules(obj)) {
-        fail("Invalid structure in .agent/prompt-rules.json");
-      }
-      return obj;
+      const parsed: unknown = JSON.parse(readFileSync(RULES_PATH, "utf8"));
+      if (!isPromptRules(parsed)) fail("Invalid structure in .agent/prompt-rules.json");
+      return parsed;
     } catch {
       fail("Invalid JSON in .agent/prompt-rules.json");
     }
@@ -138,23 +132,23 @@ function validatePrompts(rules: PromptRules) {
     const text = readFileSync(file, "utf8");
     const lower = text.toLowerCase();
 
-    if (rules.maxChars && text.length > rules.maxChars) {
+    if (rules.maxChars !== undefined && text.length > rules.maxChars) {
       errs.push(`${path.relative(process.cwd(), file)} exceeds maxChars (${text.length} > ${rules.maxChars}).`);
     }
-    if (rules.maxLines) {
+    if (rules.maxLines !== undefined) {
       const lines = text.split(/\r?\n/).length;
       if (lines > rules.maxLines) {
         errs.push(`${path.relative(process.cwd(), file)} exceeds maxLines (${lines} > ${rules.maxLines}).`);
       }
     }
-    if (rules.bannedPhrases?.length) {
+    if (Array.isArray(rules.bannedPhrases) && rules.bannedPhrases.length) {
       for (const phrase of rules.bannedPhrases) {
         if (lower.includes(phrase.toLowerCase())) {
           errs.push(`${path.relative(process.cwd(), file)} contains banned phrase: "${phrase}".`);
         }
       }
     }
-    if (rules.requiredSections?.length) {
+    if (Array.isArray(rules.requiredSections) && rules.requiredSections.length) {
       for (const section of rules.requiredSections) {
         const re = new RegExp(`^\\s*${escapeForRegExp(section)}\\s*$`, "mi");
         if (!re.test(text)) {
@@ -186,16 +180,14 @@ function validateOpsSchema() {
 
   if (!isOpsPlan(dataUnknown)) {
     if (isRecord(dataUnknown)) {
-      const obj = dataUnknown;
-      const maybeOps = (obj as Record<string, unknown>)["ops"]; // narrowed to Record; index safely
-      if (Array.isArray(maybeOps)) {
-        const bad = maybeOps
-          .map((op, i) => ({ i, ok: isOp(op) }))
+      const obj = dataUnknown; // narrowed to Record<string, unknown>
+      const opsUnknown = (obj as Record<string, unknown>).ops;
+      if (Array.isArray(opsUnknown)) {
+        const bad = opsUnknown
+          .map((op: unknown, i: number) => ({ i, ok: isOp(op) }))
           .filter((x) => !x.ok)
           .map((x) => x.i);
-        if (bad.length) {
-          fail(`${OPS_PATH} invalid; bad op indices: ${bad.join(", ")}`);
-        }
+        if (bad.length) fail(`${OPS_PATH} invalid; bad op indices: ${bad.join(", ")}`);
       }
     }
     fail(`${OPS_PATH} does not match Edit Engine contract.`);
