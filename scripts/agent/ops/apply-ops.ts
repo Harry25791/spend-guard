@@ -1,4 +1,3 @@
-// scripts/agent/ops/apply-ops.ts
 import fs from "node:fs";
 import path from "node:path";
 
@@ -136,8 +135,8 @@ export function applyOps(planPath = ".agent/ops.json"): { applied: number } {
         applied++;
         break;
       default: {
-        const _never: never = op;
-        throw new Error(`unsupported op: ${JSON.stringify(_never)}`);
+        const neverOp: never = op;
+        throw new Error(`unsupported op: ${JSON.stringify(neverOp)}`);
       }
     }
   }
@@ -145,68 +144,79 @@ export function applyOps(planPath = ".agent/ops.json"): { applied: number } {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Type guards (append-only): shared contract for generator & validator
+// Type guards (no `any`)
 // ─────────────────────────────────────────────────────────────────────────────
 
-function isRecord(v: any): v is Record<string, unknown> {
+function isRecord(v: unknown): v is Record<string, unknown> {
   return v !== null && typeof v === "object";
 }
 
-export function isOp(value: any): value is Op {
+function hasString(v: Record<string, unknown>, key: string): v is Record<string, string> {
+  return typeof v[key] === "string";
+}
+function hasBoolean(v: Record<string, unknown>, key: string): boolean {
+  return typeof v[key] === "boolean";
+}
+
+export function isOp(value: unknown): value is Op {
   if (!isRecord(value)) return false;
-  if (typeof (value as any).op !== "string") return false;
+  const v = value as Record<string, unknown>;
+  if (!hasString(v, "op")) return false;
 
-  const op = (value as any).op as Op["op"];
-  const allowed = new Set<Op["op"]>(["insertAfter", "replaceBlock", "addImport", "addTest"]);
-  if (!allowed.has(op)) return false;
-
-  if (op === "insertAfter") {
-    return typeof (value as any).file === "string"
-      && typeof (value as any).anchor === "string"
-      && typeof (value as any).text === "string";
+  const opVal = v.op;
+  if (opVal !== "insertAfter" && opVal !== "replaceBlock" && opVal !== "addImport" && opVal !== "addTest") {
+    return false;
   }
 
-  if (op === "replaceBlock") {
-    return typeof (value as any).file === "string"
-      && typeof (value as any).begin === "string"
-      && typeof (value as any).end === "string"
-      && typeof (value as any).text === "string";
+  // common: file must be string when present
+  if (!hasString(v, "file")) return false;
+
+  if (opVal === "insertAfter") {
+    return hasString(v, "anchor") && hasString(v, "text");
   }
 
-  if (op === "addImport") {
-    const spec = (value as any).spec;
-    if (!isRecord(spec)) return false;
-    if (typeof (spec as any).from !== "string") return false;
-    if ("names" in spec && (spec as any).names !== undefined) {
-      if (!Array.isArray((spec as any).names)) return false;
-      if (!(spec as any).names.every((n: any) => typeof n === "string")) return false;
-    }
-    if ("default" in spec && (spec as any).default !== undefined) {
-      if (typeof (spec as any).default !== "string") return false;
-    }
-    if ("typeOnly" in spec && (spec as any).typeOnly !== undefined) {
-      if (typeof (spec as any).typeOnly !== "boolean") return false;
-    }
-    return typeof (value as any).file === "string";
+  if (opVal === "replaceBlock") {
+    return hasString(v, "begin") && hasString(v, "end") && hasString(v, "text");
   }
 
-  if (op === "addTest") {
-    return typeof (value as any).file === "string"
-      && typeof (value as any).text === "string";
+  if (opVal === "addImport") {
+    const specUnknown = v["spec"];
+    if (!isRecord(specUnknown)) return false;
+    const s = specUnknown as Record<string, unknown>;
+    if (!hasString(s as Record<string, unknown>, "from")) return false;
+
+    if ("names" in s && s.names !== undefined) {
+      if (!Array.isArray(s.names) || !s.names.every((n) => typeof n === "string")) return false;
+    }
+    if ("default" in s && s.default !== undefined) {
+      if (typeof s.default !== "string") return false;
+    }
+    if ("typeOnly" in s && s.typeOnly !== undefined) {
+      if (!hasBoolean(s, "typeOnly")) return false;
+    }
+    return true;
+  }
+
+  if (opVal === "addTest") {
+    return hasString(v, "text");
   }
 
   return false;
 }
 
-export function isOpsPlan(value: any): value is OpsPlan {
+export function isOpsPlan(value: unknown): value is OpsPlan {
   if (!isRecord(value)) return false;
-  if (typeof (value as any).id !== "string") return false;
-  if (!Array.isArray((value as any).ops)) return false;
-  if (!((value as any).ops as any[]).every(isOp)) return false;
+  const v = value as Record<string, unknown>;
+  if (!hasString(v, "id")) return false;
 
-  if ("acceptance" in value && (value as any).acceptance !== undefined) {
-    if (!Array.isArray((value as any).acceptance)) return false;
-    if (!(value as any).acceptance.every((s: any) => typeof s === "string")) return false;
+  const ops = v["ops"];
+  if (!Array.isArray(ops)) return false;
+  if (!ops.every((o) => isOp(o))) return false;
+
+  if ("acceptance" in v && v.acceptance !== undefined) {
+    if (!Array.isArray(v.acceptance) || !v.acceptance.every((s) => typeof s === "string")) {
+      return false;
+    }
   }
   return true;
 }
