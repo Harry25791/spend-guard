@@ -1,4 +1,8 @@
+// scripts/agent/utils/git.ts
 import { execSync } from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 
 const sh = (cmd: string) => execSync(cmd, { stdio: 'pipe' }).toString().trim();
 
@@ -14,7 +18,12 @@ export function ensureCleanTreeOrAutostash() {
 }
 
 export function createBranch(name: string) {
-  sh(`git checkout -b ${name}`);
+  // Prefer modern switch; fall back to checkout for older Git
+  try {
+    sh(`git switch -c "${name}"`);
+  } catch {
+    sh(`git checkout -b "${name}"`);
+  }
 }
 
 export function hasChanges() {
@@ -23,11 +32,26 @@ export function hasChanges() {
 
 export function stageAllAndCommit(message: string) {
   sh('git add -A');
-  // If STILL nothing to commit, create an allow-empty commit so the PR can open
+
+  // Write commit message to a temp file to avoid shell-quoting issues (backticks, quotes, etc.)
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-agent-lite-'));
+  const msgFile = path.join(tmpDir, 'COMMIT_MESSAGE.txt');
+
   try {
-    sh(`git commit -m ${JSON.stringify(message)}`);
-  } catch {
-    sh(`git commit --allow-empty -m ${JSON.stringify(message + ' (empty)')}`);
+    fs.writeFileSync(msgFile, message, 'utf8');
+    try {
+      sh(`git commit -F "${msgFile}"`);
+    } catch {
+      // If STILL nothing to commit, create an allow-empty commit so the PR can open
+      sh(`git commit --allow-empty -F "${msgFile}"`);
+    }
+  } finally {
+    // Best-effort cleanup
+    try {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    } catch {
+      /* no-op */
+    }
   }
 }
 
