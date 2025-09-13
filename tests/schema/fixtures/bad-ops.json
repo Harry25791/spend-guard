@@ -1,0 +1,23 @@
+{
+  "id": 123,
+  "ops": [
+    {
+      "op": "renameFile",
+      "from": "src/a.ts",
+      "to": "src/b.ts"
+    },
+    {
+      "op": "addImport",
+      "file": "src/foo.ts",
+      "spec": {
+        "names": ["x", "y"]
+      }
+    },
+    {
+      "op": "replaceBlock",
+      "file": "src/bar.ts",
+      "begin": "// [agent-begin] X",
+      "text": "missing end key"
+    }
+  ]
+}

@@ -1,0 +1,34 @@
+{
+  "id": "demo-step-001",
+  "acceptance": [
+    "Given a clean repo, When the ops are applied, Then the agent check passes"
+  ],
+  "ops": [
+    {
+      "op": "insertAfter",
+      "file": "src/example.ts",
+      "anchor": "// [agent-keep] example-anchor",
+      "text": "export const demoValue = 42;"
+    },
+    {
+      "op": "replaceBlock",
+      "file": "src/components/Demo.tsx",
+      "begin": "// [agent-begin] Demo",
+      "end": "// [agent-end] Demo",
+      "text": "export function Demo(){ return <div>Demo</div>; }"
+    },
+    {
+      "op": "addImport",
+      "file": "src/components/Demo.tsx",
+      "spec": {
+        "from": "@/lib/io",
+        "names": ["rangeForScope"]
+      }
+    },
+    {
+      "op": "addTest",
+      "file": "tests/example.test.ts",
+      "text": "import { describe, it, expect } from 'vitest';\ndescribe('example', () => { it('works', () => { expect(1+1).toBe(2); }); });"
+    }
+  ]
+}

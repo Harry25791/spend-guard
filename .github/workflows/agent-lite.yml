@@ -28,7 +28,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      # ✅ MOVE THIS UP: set author before any commits happen
+      # set author before any commits happen
       - name: Configure Git author
         run: |
           git config user.name "github-actions[bot]"
@@ -59,7 +59,26 @@ jobs:
         env:
           AGENT_TASK: ${{ github.event.inputs.task }}
 
-      - name: Implement step (branch + seed)
+      # optional LLM generation of .agent/ops.json (falls back if no key)
+      - name: Generate ops (LLM; optional)
+        if: ${{ secrets.OPENAI_API_KEY != '' }}
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_MODEL: gpt-5
+          AGENT_TASK: ${{ github.event.inputs.task }}
+        run: pnpm -s agent:gen-ops || echo "ops generation skipped"
+
+      # upload ops.json as an artifact if present
+      - name: Upload ops.json artifact (if present)
+        if: ${{ hashFiles('.agent/ops.json') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-ops-json
+          path: .agent/ops.json
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Implement step (branch + apply ops or seed)
         run: pnpm agent:impl
 
       - name: Run checks (typecheck, lint, unit tests)
@@ -70,9 +89,11 @@ jobs:
         run: echo "branch=$(git rev-parse --abbrev-ref HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Push branch
+        if: ${{ success() }}
         run: git push --set-upstream origin "${{ steps.br.outputs.branch }}"
 
       - name: Read plan meta
+        if: ${{ success() }}
         id: planmeta
         uses: actions/github-script@v7
         with:
@@ -83,12 +104,14 @@ jobs:
             core.setOutput('title', plan.chosen.title);
 
       - name: Create Pull Request
+        if: ${{ success() }}
         id: create-pr
         uses: actions/github-script@v7
         env:
           BRANCH: ${{ steps.br.outputs.branch }}
           TITLE: ${{ steps.planmeta.outputs.title }}
         with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             const owner = context.repo.owner;
             const repo = context.repo.repo;
@@ -110,6 +133,7 @@ jobs:
             }
 
       - name: PR link
+        if: ${{ success() }}
         run: echo "PR opened:${{ steps.create-pr.outputs.url }}"
 
   check:
@@ -117,7 +141,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      statuses: write    # <-- add this
+      statuses: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -136,7 +160,7 @@ jobs:
       - name: Agent check (typecheck + lint(agent) + build context + unit tests + validate)
         run: pnpm agent:check
 
-      # NEW: publish a stable commit status so Branch Protection can see/select it
+      # publish a stable commit status so Branch Protection can see/select it
       - name: Publish status (success)
         if: ${{ success() }}
         uses: actions/github-script@v7
@@ -166,4 +190,3 @@ jobs:
               context: 'agent-lite / check',
               description: 'Checks failed'
             });
-
