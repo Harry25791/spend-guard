@@ -1,4 +1,4 @@
-name: agent-lite
+name: "Agent Lite"
 
 on:
   workflow_dispatch:
@@ -15,7 +15,7 @@ permissions:
   pull-requests: write
 
 concurrency:
-  group: pr-${{ github.event.pull_request.number || github.ref }}
+  group: pr-${{ github.event.pull_request.number || github.ref_name }}
   cancel-in-progress: true
 
 jobs:
@@ -73,7 +73,7 @@ jobs:
         if: ${{ hashFiles('.agent/ops.json') != '' }}
         uses: actions/upload-artifact@v4
         with:
-          name: agent-ops-json
+          name: agent-ops
           path: .agent/ops.json
           if-no-files-found: ignore
           retention-days: 7

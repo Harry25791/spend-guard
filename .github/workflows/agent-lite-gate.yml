@@ -1,8 +1,11 @@
-name: agent-lite-gate
+name: "agent-lite-gate"
 
 on:
   workflow_run:
-    workflows: ["agent-lite"]
+    workflows:
+      - "Agent Lite"                       # matches the explicit name above
+      - "agent-lite"                       # backward compatibility if the name is lowercased
+      - ".github/workflows/agent-lite.yml" # fallback when GitHub shows the file path
     types: [completed]
 
 permissions:
@@ -12,7 +15,8 @@ permissions:
 
 jobs:
   gate:
-    if: ${{ github.event.workflow_run.conclusion != 'skipped' }}
+    # Only re-run checks when the dispatch workflow completed successfully
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     name: Re-run agent:check on PR branch and publish "agent-lite / check" status
 
