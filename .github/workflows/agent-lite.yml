@@ -28,6 +28,12 @@ jobs:
         with:
           fetch-depth: 0
 
+      # ✅ MOVE THIS UP: set author before any commits happen
+      - name: Configure Git author
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
@@ -42,7 +48,6 @@ jobs:
       - name: Install deps
         run: pnpm install --frozen-lockfile=false
 
-      # NEW: fast-fail preflight (corrected logic)
       - name: Doctor
         run: pnpm -s agent:doctor || { echo "doctor failed (stub or actionable)"; exit 1; }
 
@@ -60,24 +65,18 @@ jobs:
       - name: Run checks (typecheck, lint, unit tests)
         run: pnpm agent:check
 
-      - name: Configure Git author
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-      # NEW: Read plan meta for a clean PR title
-      - name: Read plan meta
-        id: planmeta
-        run: |
-          echo "id=$(node -e \"process.stdout.write(JSON.parse(require('fs').readFileSync('.agent/plan.json','utf8')).chosen.id)\")" >> $GITHUB_OUTPUT
-          echo "title=$(node -e \"process.stdout.write(JSON.parse(require('fs').readFileSync('.agent/plan.json','utf8')).chosen.title)\")" >> $GITHUB_OUTPUT
-
       - name: Get branch name
         id: br
         run: echo "branch=$(git rev-parse --abbrev-ref HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Push branch
         run: git push --set-upstream origin "${{ steps.br.outputs.branch }}"
+
+      - name: Read plan meta
+        id: planmeta
+        run: |
+          echo "id=$(node -e \"process.stdout.write(JSON.parse(require('fs').readFileSync('.agent/plan.json','utf8')).chosen.id)\")" >> $GITHUB_OUTPUT
+          echo "title=$(node -e \"process.stdout.write(JSON.parse(require('fs').readFileSync('.agent/plan.json','utf8')).chosen.title)\")" >> $GITHUB_OUTPUT
 
       - name: Create Pull Request
         id: create-pr
