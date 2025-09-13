@@ -29,33 +29,41 @@ type PromptRules = {
   maxLines?: number;
 };
 
+// Tiny helpers (no assertions)
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null;
 }
 function isPositiveInt(n: unknown): n is number {
   return typeof n === "number" && Number.isInteger(n) && n > 0 && Number.isFinite(n);
 }
-
-// Config parsing + validation
-let cfgUnknown: unknown;
-try {
-  cfgUnknown = JSON.parse(readFileSync(CFG, "utf8"));
-} catch {
-  fail("Invalid JSON in .agent/config.json");
+function isStringArray(x: unknown): x is string[] {
+  return Array.isArray(x) && x.every((s) => typeof s === "string");
 }
+
+// Config parsing (no assertions after guards)
 function isAgentConfig(v: unknown): v is AgentConfig {
   if (!isRecord(v)) return false;
-  const m = v;
-  const mcl = (m as Record<string, unknown>).maxChangedLines;
-  const mck = (m as Record<string, unknown>).maxContextKB;
+  const m = v; // narrowed by isRecord
+  const mcl = (m as Record<string, unknown>)["maxChangedLines"];
+  const mck = (m as Record<string, unknown>)["maxContextKB"];
   const okMcl = isPositiveInt(mcl);
   const okMck = mck === undefined || isPositiveInt(mck);
   return okMcl && okMck;
 }
-if (!isAgentConfig(cfgUnknown)) {
-  fail("Invalid structure in .agent/config.json (expected { maxChangedLines: number; maxContextKB?: number })");
-}
-const cfg = cfgUnknown; // narrowed by guard above
+
+const cfg: AgentConfig = (() => {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(readFileSync(CFG, "utf8"));
+  } catch {
+    fail("Invalid JSON in .agent/config.json");
+  }
+  if (!isAgentConfig(parsed)) {
+    fail("Invalid structure in .agent/config.json (expected { maxChangedLines: number; maxContextKB?: number })");
+  }
+  // inside this branch, parsed is AgentConfig via the type guard
+  return parsed;
+})();
 
 const maxContextKB = cfg.maxContextKB && cfg.maxContextKB > 0 ? cfg.maxContextKB : 512;
 
@@ -80,16 +88,18 @@ const AGENT_DIR = ".agent";
 const PROMPTS_DIR = path.join(AGENT_DIR, "prompts");
 const RULES_PATH = path.join(AGENT_DIR, "prompt-rules.json");
 
-function isStringArray(x: unknown): x is string[] {
-  return Array.isArray(x) && x.every((s) => typeof s === "string");
-}
 function isPromptRules(x: unknown): x is PromptRules {
   if (!isRecord(x)) return false;
   const r = x as Record<string, unknown>;
-  if ("requiredSections" in r && r.requiredSections !== undefined && !isStringArray(r.requiredSections)) return false;
-  if ("bannedPhrases" in r && r.bannedPhrases !== undefined && !isStringArray(r.bannedPhrases)) return false;
-  if ("maxChars" in r && r.maxChars !== undefined && typeof r.maxChars !== "number") return false;
-  if ("maxLines" in r && r.maxLines !== undefined && typeof r.maxLines !== "number") return false;
+  const rs = r["requiredSections"];
+  const bp = r["bannedPhrases"];
+  const mc = r["maxChars"];
+  const ml = r["maxLines"];
+
+  if (rs !== undefined && !isStringArray(rs)) return false;
+  if (bp !== undefined && !isStringArray(bp)) return false;
+  if (mc !== undefined && typeof mc !== "number") return false;
+  if (ml !== undefined && typeof ml !== "number") return false;
   return true;
 }
 
@@ -113,6 +123,7 @@ function loadRules(): PromptRules {
 function escapeForRegExp(s: string) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
+
 function validatePrompts(rules: PromptRules) {
   if (!existsSync(PROMPTS_DIR)) {
     warn(`${PROMPTS_DIR} not found; skipping prompt validation.`);
@@ -181,10 +192,10 @@ function validateOpsSchema() {
   if (!isOpsPlan(dataUnknown)) {
     if (isRecord(dataUnknown)) {
       const obj = dataUnknown; // narrowed to Record<string, unknown>
-      const opsUnknown = (obj as Record<string, unknown>).ops;
+      const opsUnknown = (obj as Record<string, unknown>)["ops"];
       if (Array.isArray(opsUnknown)) {
         const bad = opsUnknown
-          .map((op: unknown, i: number) => ({ i, ok: isOp(op) }))
+          .map((op, i) => ({ i, ok: isOp(op) }))
           .filter((x) => !x.ok)
           .map((x) => x.i);
         if (bad.length) fail(`${OPS_PATH} invalid; bad op indices: ${bad.join(", ")}`);
