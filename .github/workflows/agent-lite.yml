@@ -61,12 +61,16 @@ jobs:
 
       # optional LLM generation of .agent/ops.json (falls back if no key)
       - name: Generate ops (LLM; optional)
-        if: ${{ secrets.OPENAI_API_KEY != '' }}
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENAI_MODEL: gpt-5
           AGENT_TASK: ${{ github.event.inputs.task }}
-        run: pnpm -s agent:gen-ops || echo "ops generation skipped"
+        run: |
+          if [ -n "${OPENAI_API_KEY}" ]; then
+            pnpm -s agent:gen-ops || echo "ops generation skipped"
+          else
+            echo "No OPENAI_API_KEY; skipping ops generation (will fallback)."
+          fi
 
       # upload ops.json as an artifact if present
       - name: Upload ops.json artifact (if present)
