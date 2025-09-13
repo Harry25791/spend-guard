@@ -18,7 +18,8 @@
     "lint:changed": "tsx scripts/agent/checks/lint-changed.ts",
     "agent:validate": "tsx scripts/agent/checks/validate-agent.ts",
     "agent:check": "pnpm -s typecheck && pnpm -s lint:changed && pnpm -s agent:context && pnpm -s test:unit && pnpm -s agent:validate",
-    "agent:run": "pnpm agent:context && pnpm agent:plan && pnpm agent:impl && pnpm agent:check"
+    "agent:run": "pnpm agent:context && pnpm agent:plan && pnpm agent:impl && pnpm agent:check",
+    "agent:doctor": "tsx scripts/agent/doctor.ts"
   },
   "dependencies": {
     "clsx": "^2.1.1",

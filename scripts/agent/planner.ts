@@ -1,5 +1,5 @@
 // scripts/agent/planner.ts
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 
 type PlanStep = {
   id: string;
@@ -14,6 +14,7 @@ type AgentConfig = {
   maxChangedLines: number;
   planner?: {
     defaultChangeBudget?: number;
+    fallbackTask?: string;
   };
 };
 
@@ -26,11 +27,11 @@ function sanitizeId(s: string): string {
   return s
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80);
 }
 
-function defaultTaskFromRoadmap(): string {
-  // First unchecked item ("- [ ] ...") in ROADMAP.md
+function firstUncheckedFromRoadmap(): string | null {
   try {
     const raw = readFileSync("ROADMAP.md", "utf8");
     const line = raw.split("\n").find((l) => /^\s*-\s*\[\s\]\s+/.test(l));
@@ -38,28 +39,38 @@ function defaultTaskFromRoadmap(): string {
   } catch {
     // ignore
   }
-  return "Create initial agent seed test and TODO";
+  return null;
 }
 
 function main() {
-  // Optional config
-  let changeBudget = 400;
+  // Load optional config
+  let cfg: AgentConfig | undefined;
   try {
-    const cfg = readJson<AgentConfig>(".agent/config.json");
-    if (typeof cfg?.planner?.defaultChangeBudget === "number" && cfg.planner.defaultChangeBudget > 0) {
-      changeBudget = cfg.planner.defaultChangeBudget;
-    }
+    cfg = readJson<AgentConfig>(".agent/config.json");
   } catch {
-    // default stands
+    // proceed with safe defaults
   }
 
   const inputTask = (process.env.AGENT_TASK ?? "").trim();
-  const task = inputTask.length > 0 ? inputTask : defaultTaskFromRoadmap();
+  const fromRoadmap = firstUncheckedFromRoadmap();
+  const fallbackTask =
+    cfg?.planner?.fallbackTask ?? "Create initial agent seed test and TODO";
+
+  const task = inputTask || fromRoadmap || fallbackTask;
+
+  const changeBudget =
+    (cfg?.planner?.defaultChangeBudget && cfg.planner.defaultChangeBudget > 0
+      ? cfg.planner.defaultChangeBudget
+      : Math.min(200, cfg?.maxChangedLines ?? 400));
 
   const step: PlanStep = {
     id: sanitizeId(task.startsWith("Create ") ? task : `Create ${task}`),
     title: task,
-    rationale: "Smallest available task from ROADMAP.md to keep PRs safe and reviewable.",
+    rationale: inputTask
+      ? "User-specified task via AGENT_TASK (workflow_dispatch input)."
+      : fromRoadmap
+      ? "Smallest available task from ROADMAP.md to keep PRs safe and reviewable."
+      : "Fallback task from .agent/config.json planner.fallbackTask.",
     changeBudget,
     acceptance: [
       "Given repo is installed, When running pnpm test:unit, Then tests pass",
@@ -68,7 +79,12 @@ function main() {
     touches: ["src/**", "tests/**"],
   };
 
-  // Legacy-style log that our tests expect
+  // Ensure .agent exists and write plan.json
+  if (!existsSync(".agent")) mkdirSync(".agent", { recursive: true });
+  const plan = { chosen: step, alternatives: [] as PlanStep[] };
+  writeFileSync(".agent/plan.json", JSON.stringify(plan, null, 2));
+
+  // Legacy-style log that tests expect
   console.log("Planned step:", step);
 }
 

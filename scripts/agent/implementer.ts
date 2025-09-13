@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { execSync } from 'node:child_process';
 import { ensureDir } from './utils/fsx';
 import { createBranch, ensureCleanTreeOrAutostash, stageAllAndCommit, hasChanges } from './utils/git';
 import type { Plan } from './types';
@@ -12,6 +13,22 @@ function ts() {
 
 function main() {
   ensureCleanTreeOrAutostash();
+
+  // ── self-heal derived artifacts on fresh checkouts ───────────────────────────
+  try {
+    if (!fs.existsSync('.agent/context.json')) {
+      console.log('[agent] No .agent/context.json → building…');
+      execSync('pnpm -s agent:context', { stdio: 'inherit' });
+    }
+    if (!fs.existsSync('.agent/plan.json')) {
+      console.log('[agent] No .agent/plan.json → planning…');
+      execSync('pnpm -s agent:plan', { stdio: 'inherit' });
+    }
+  } catch (e) {
+    console.error('[agent] Failed to generate .agent/context.json or .agent/plan.json');
+    process.exit(1);
+  }
+  // ─────────────────────────────────────────────────────────────────────────────
 
   const cfg = JSON.parse(fs.readFileSync('.agent/config.json','utf8')) as { branchPrefix: string };
   const plan = JSON.parse(fs.readFileSync('.agent/plan.json','utf8')) as Plan;
