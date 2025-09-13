@@ -40,57 +40,49 @@ function isStringArray(x: unknown): x is string[] {
   return Array.isArray(x) && x.every((s) => typeof s === "string");
 }
 
-// Config parsing (no assertions after guards)
+// Agent config guard
 function isAgentConfig(v: unknown): v is AgentConfig {
   if (!isRecord(v)) return false;
   const m = v; // narrowed by isRecord
-  const mcl = (m as Record<string, unknown>)["maxChangedLines"];
-  const mck = (m as Record<string, unknown>)["maxContextKB"];
+  const mcl = m["maxChangedLines"];
+  const mck = m["maxContextKB"];
   const okMcl = isPositiveInt(mcl);
   const okMck = mck === undefined || isPositiveInt(mck);
   return okMcl && okMck;
 }
 
-const cfg: AgentConfig = (() => {
+// Load agent config (avoid assertions by branching)
+function loadAgentConfig(): AgentConfig {
   let parsed: unknown;
   try {
     parsed = JSON.parse(readFileSync(CFG, "utf8"));
   } catch {
     fail("Invalid JSON in .agent/config.json");
   }
-  if (!isAgentConfig(parsed)) {
-    fail("Invalid structure in .agent/config.json (expected { maxChangedLines: number; maxContextKB?: number })");
-  }
-  // inside this branch, parsed is AgentConfig via the type guard
-  return parsed;
-})();
-
-const maxContextKB = cfg.maxContextKB && cfg.maxContextKB > 0 ? cfg.maxContextKB : 512;
+  if (isAgentConfig(parsed)) return parsed;
+  fail("Invalid structure in .agent/config.json (expected { maxChangedLines: number; maxContextKB?: number })");
+}
 
 // Context size check
-let ctxRaw = "";
-try {
-  ctxRaw = readFileSync(CTX, "utf8");
-  JSON.parse(ctxRaw);
-} catch {
-  fail("Invalid JSON in .agent/context.json");
+function validateContextSize(maxKB: number) {
+  let ctxRaw = "";
+  try {
+    ctxRaw = readFileSync(CTX, "utf8");
+    JSON.parse(ctxRaw);
+  } catch {
+    fail("Invalid JSON in .agent/context.json");
+  }
+  const sizeKB = Math.ceil(Buffer.byteLength(ctxRaw, "utf8") / 1024);
+  if (sizeKB > maxKB) {
+    fail(`.agent/context.json too large: ${sizeKB}KB > ${maxKB}KB`);
+  }
+  return sizeKB;
 }
-const sizeKB = Math.ceil(Buffer.byteLength(ctxRaw, "utf8") / 1024);
-if (sizeKB > maxContextKB) {
-  fail(`.agent/context.json too large: ${sizeKB}KB > ${maxContextKB}KB`);
-}
-console.log(
-  `✅ Agent metadata validated — maxChangedLines=${cfg.maxChangedLines}, contextSize=${sizeKB}KB (limit ${maxContextKB}KB)`
-);
 
-// 2) Prompt validation
-const AGENT_DIR = ".agent";
-const PROMPTS_DIR = path.join(AGENT_DIR, "prompts");
-const RULES_PATH = path.join(AGENT_DIR, "prompt-rules.json");
-
+// Prompt rules guard
 function isPromptRules(x: unknown): x is PromptRules {
   if (!isRecord(x)) return false;
-  const r = x as Record<string, unknown>;
+  const r = x;
   const rs = r["requiredSections"];
   const bp = r["bannedPhrases"];
   const mc = r["maxChars"];
@@ -103,7 +95,9 @@ function isPromptRules(x: unknown): x is PromptRules {
   return true;
 }
 
+// Load prompt rules (no assertions)
 function loadRules(): PromptRules {
+  const RULES_PATH = path.join(".agent", "prompt-rules.json");
   if (existsSync(RULES_PATH)) {
     try {
       const parsed: unknown = JSON.parse(readFileSync(RULES_PATH, "utf8"));
@@ -125,6 +119,7 @@ function escapeForRegExp(s: string) {
 }
 
 function validatePrompts(rules: PromptRules) {
+  const PROMPTS_DIR = path.join(".agent", "prompts");
   if (!existsSync(PROMPTS_DIR)) {
     warn(`${PROMPTS_DIR} not found; skipping prompt validation.`);
     return;
@@ -175,7 +170,7 @@ function validatePrompts(rules: PromptRules) {
   console.log(`✅ Prompt validation passed for ${files.length} file(s).`);
 }
 
-// 3) Ops schema gate
+// Ops schema gate (no assertions)
 const OPS_PATH = ".agent/ops.json";
 function validateOpsSchema() {
   if (!existsSync(OPS_PATH)) {
@@ -191,8 +186,8 @@ function validateOpsSchema() {
 
   if (!isOpsPlan(dataUnknown)) {
     if (isRecord(dataUnknown)) {
-      const obj = dataUnknown; // narrowed to Record<string, unknown>
-      const opsUnknown = (obj as Record<string, unknown>)["ops"];
+      const obj = dataUnknown; // Record<string, unknown>
+      const opsUnknown = obj["ops"];
       if (Array.isArray(opsUnknown)) {
         const bad = opsUnknown
           .map((op, i) => ({ i, ok: isOp(op) }))
@@ -208,6 +203,12 @@ function validateOpsSchema() {
 
 // 4) Main
 function main() {
+  const cfg = loadAgentConfig();
+  const maxContextKB = cfg.maxContextKB && cfg.maxContextKB > 0 ? cfg.maxContextKB : 512;
+  const ctxKB = validateContextSize(maxContextKB);
+  console.log(
+    `✅ Agent metadata validated — maxChangedLines=${cfg.maxChangedLines}, contextSize=${ctxKB}KB (limit ${maxContextKB}KB)`
+  );
   const rules = loadRules();
   validatePrompts(rules);
   validateOpsSchema();
