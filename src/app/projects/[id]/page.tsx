@@ -363,7 +363,8 @@ export default function ProjectDetail() {
       </div>
 
       {/* TOP: Full-width token input first */}
-      <SGCard className="p-4">
+      <div className="md:sticky md:top-24">
+        <SGCard className="p-4">
         <div className="mb-3 flex items-center gap-2 text-sm">
           <span className="text-slate-400">Entry mode:</span>
           <Button
@@ -511,6 +512,7 @@ export default function ProjectDetail() {
         </p>
         {saved && <p className="text-emerald-400 text-sm mt-2">✅ Saved</p>}
       </SGCard>
+      </div>
 
       {/* Sentinel for staggered reveals below */}
       <div ref={sentinelRef} aria-hidden className="h-px w-full" />

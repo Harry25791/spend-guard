@@ -314,37 +314,37 @@ export default function Home() {
         <div className={revealClass(2)}>
           <ClientOnly>
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-              <SGCard>
-                <h3 className="mb-2 text-sm font-semibold text-slate-200">
-                  Spend over time — {labelForScope(scope)}
+              <SGCard className="p-6 md:p-2 min-h-[420px]">
+                <h3 className="mb-4 text-base font-semibold text-slate-200">
+                  Spend Over Time — {labelForScope(scope)}
                 </h3>
                 <Timeline entries={flatEntries} from={from} to={to} cumulative valueKey="cumCost" ariaLabel="Cumulative spend" />
               </SGCard>
 
-              <SGCard>
-                <h3 className="mb-2 text-sm font-semibold text-slate-200">
-                  Top models — {labelForScope(scope)}
+              <SGCard className="p-6 md:p-2 min-h-[420px]">
+                <h3 className="mb-2 text-base font-semibold text-slate-200">
+                  Top Models — {labelForScope(scope)}
                 </h3>
                 <TopModelsBar entries={flatEntries} topN={6} />
               </SGCard>
 
-              <SGCard>
-                <h3 className="mb-2 text-sm font-semibold text-slate-200">
-                  Spend by provider — {labelForScope(scope)}
+              <SGCard className="p-6 md:p-2 min-h-[420px]">
+                <h3 className="mb-4 text-base font-semibold text-slate-200">
+                  Spend By Provider — {labelForScope(scope)}
                 </h3>
                 <ProviderStackArea entries={flatEntries} from={from} to={to} />
               </SGCard>
 
-              <SGCard>
-                <h3 className="mb-2 text-sm font-semibold text-slate-200">
-                  Model share — {labelForScope(scope)}
+              <SGCard className="p-6 md:p-2 min-h-[420px]">
+                <h3 className="mb-2 text-base font-semibold text-slate-200">
+                  Model Share — {labelForScope(scope)}
                 </h3>
                 <PieByModel entries={flatEntries} />
               </SGCard>
 
-              <SGCard className="lg:col-span-2">
-                <h3 className="mb-2 text-sm font-semibold text-slate-200">
-                  Entry size distribution — {labelForScope(scope)}
+              <SGCard className="p-6 md:p-2 min-h-[420px] lg:col-span-2">
+                <h3 className="mb-2 text-base font-semibold text-slate-200">
+                  Entry Size Distribution — {labelForScope(scope)}
                 </h3>
                 <EntryHistogram entries={flatEntries} metric="tokens" />
               </SGCard>
