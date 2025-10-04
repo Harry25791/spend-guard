@@ -3,7 +3,7 @@
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { buildTimelineSeries, type Period } from "@/lib/aggregate";
 import { autoPeriod, fmtUsd } from "./utils";
-import { chartTheme } from "./theme";
+import { chartTheme, rgba, formatMetricName } from "./theme";
 
 type Entry = { date: string | Date; cost: number; tokens?: number };
 type Props = {
@@ -23,7 +23,7 @@ export default function Timeline({
   to,
   period,
   cumulative = false,
-  height = 260,
+  height = 340,
   valueKey = "cost",
   ariaLabel = "Spend timeline",
 }: Props) {
@@ -31,41 +31,77 @@ export default function Timeline({
   const data = buildTimelineSeries(entries, { period: per, from, to, cumulative });
 
   const isCost = valueKey === "cost" || valueKey === "cumCost";
+  const BASE = chartTheme.series[0]; // brand primary (#C277FF)
+
+  const MIN_RENDER_USD = 0.01;          // tweak if you like
+  const MIN_RENDER_TOKENS = 5;          // for token timelines
+  const isTokens = valueKey === "tokens" || valueKey === "cumTokens";
+  const grandTotal = Array.isArray(data)
+    ? data.reduce((sum, d: any) => sum + Number(d[valueKey] ?? 0), 0)
+    : 0;
 
   return (
     <div aria-label={ariaLabel} className="w-full">
       <ResponsiveContainer width="100%" height={height}>
-        <AreaChart data={data} margin={{ top: 6, right: 12, left: 0, bottom: 0 }}>
+        {(isTokens ? grandTotal < MIN_RENDER_TOKENS : grandTotal < MIN_RENDER_USD) ? (
+          <div className="h-full w-full flex items-center justify-center text-slate-400 text-sm">
+            Negligible Spend So Far - Add More Usage To See Trends
+          </div>
+        ) : (
+        <AreaChart data={data} margin={{ top: 6, right: 16, left: 8, bottom: 0 }}>
+          <defs>
+            <linearGradient id="sgTimelineFill" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={rgba(BASE, 0.38)} />
+              <stop offset="100%" stopColor={rgba(BASE, 0.06)} />
+            </linearGradient>
+          </defs>
           <CartesianGrid stroke={chartTheme.grid.stroke} />
           <XAxis
             dataKey="key"
-            tick={{ ...chartTheme.axis.tick }}
-            stroke={chartTheme.axis.line.stroke}
+            axisLine={{ stroke: chartTheme.axis.line.stroke }}
+            tickLine={{ stroke: chartTheme.axis.line.stroke }}
+            tick={{ fill: chartTheme.axis.tick.fill, fontSize: chartTheme.axis.fontSize - 2 }}
+            angle={-45}
+            textAnchor="end"
+            height={chartTheme.axis.fontSize * 5}  // extra room for rotated labels
+            tickMargin={8}
           />
+
           <YAxis
-            tick={{ ...chartTheme.axis.tick }}
+            axisLine={{ stroke: chartTheme.axis.line.stroke }}
+            tickLine={{ stroke: chartTheme.axis.line.stroke }}
+            tick={{ fill: chartTheme.axis.tick.fill, fontSize: chartTheme.axis.fontSize }}
             stroke={chartTheme.axis.line.stroke}
-            tickFormatter={(v) => (isCost ? fmtUsd(v as number) : String(v))}
+            tickFormatter={(v) => fmtUsd(v as number)}
             width={60}
           />
+
           <Tooltip
+            cursor={chartTheme.hoverCursor}
             contentStyle={{
               background: chartTheme.tooltip.bg,
               border: chartTheme.tooltip.border,
               borderRadius: chartTheme.tooltip.radius,
+              color: chartTheme.tooltip.color,
             }}
             labelStyle={{ color: chartTheme.tooltip.color }}
-            formatter={(val: number, _name, _p) => (isCost ? fmtUsd(val) : `${Math.round(val)} tk`)}
+            itemStyle={{ color: chartTheme.tooltip.color }}
+            formatter={(val: number | string, name: string) => [
+              isCost ? fmtUsd(Number(val)) : `${Math.round(Number(val))} tk`,
+              formatMetricName(name),
+            ]}
           />
           <Area
             type="monotone"
             dataKey={valueKey}
-            fill="rgba(139,92,246,0.22)"
-            stroke="rgba(139,92,246,0.85)"
-            strokeWidth={2}
-            activeDot={{ r: 3 }}
+            fill="url(#sgTimelineFill)"
+            stroke={rgba(BASE, 0.85)}
+            strokeWidth={3}
+            strokeLinecap="round"
+            activeDot={{ r: 3, style: { filter: chartTheme.shadowCss.glowSm } }}
           />
         </AreaChart>
+        )}
       </ResponsiveContainer>
     </div>
   );

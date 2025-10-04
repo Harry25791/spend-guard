@@ -240,7 +240,7 @@ export default function ProjectsPage() {
               ) : projects.length === 0 ? (
                 <tr>
                   <td colSpan={4} className="px-5 py-8 text-center text-slate-400">
-                    No projects yet. Add one above.
+                    No Projects Yet - Add One Above.
                   </td>
                 </tr>
               ) : (
