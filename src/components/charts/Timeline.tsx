@@ -4,6 +4,8 @@ import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YA
 import { buildTimelineSeries, type Period } from "@/lib/aggregate";
 import { autoPeriod, fmtUsd } from "./utils";
 import { chartTheme, rgba, formatMetricName } from "./theme";
+import ChartPlaceholder from "./ChartPlaceholder";
+import { hasMeaningful } from "./meaningful";
 
 type Entry = { date: string | Date; cost: number; tokens?: number };
 type Props = {
@@ -33,8 +35,8 @@ export default function Timeline({
   const isCost = valueKey === "cost" || valueKey === "cumCost";
   const BASE = chartTheme.series[0]; // brand primary (#C277FF)
 
-  const MIN_RENDER_USD = 0.01;          // tweak if you like
-  const MIN_RENDER_TOKENS = 5;          // for token timelines
+  const MIN_RENDER_USD = 0.01;
+  const MIN_RENDER_TOKENS = 5;
   const isTokens = valueKey === "tokens" || valueKey === "cumTokens";
   const grandTotal = Array.isArray(data)
     ? data.reduce((sum, d: any) => sum + Number(d[valueKey] ?? 0), 0)
@@ -43,11 +45,7 @@ export default function Timeline({
   return (
     <div aria-label={ariaLabel} className="w-full">
       <ResponsiveContainer width="100%" height={height}>
-        {(isTokens ? grandTotal < MIN_RENDER_TOKENS : grandTotal < MIN_RENDER_USD) ? (
-          <div className="h-full w-full flex items-center justify-center text-slate-400 text-sm">
-            Negligible Spend So Far - Add More Usage To See Trends
-          </div>
-        ) : (
+        {hasMeaningful(grandTotal, isTokens ? MIN_RENDER_TOKENS : MIN_RENDER_USD) ? (
         <AreaChart data={data} margin={{ top: 6, right: 16, left: 8, bottom: 0 }}>
           <defs>
             <linearGradient id="sgTimelineFill" x1="0" y1="0" x2="0" y2="1">
@@ -101,7 +99,9 @@ export default function Timeline({
             activeDot={{ r: 3, style: { filter: chartTheme.shadowCss.glowSm } }}
           />
         </AreaChart>
-        )}
+        ) : (
+        <ChartPlaceholder />
+      )}
       </ResponsiveContainer>
     </div>
   );

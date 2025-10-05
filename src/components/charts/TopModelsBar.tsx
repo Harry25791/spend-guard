@@ -3,6 +3,8 @@ import { useState } from "react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis, Cell, Line } from "recharts";
 import { chartTheme, rgba, formatMetricName } from "./theme";
 import { fmtUsd } from "./utils";
+import ChartPlaceholder from "./ChartPlaceholder";
+import { hasMeaningful } from "./meaningful";
 
 type TickProps = { x: number; y: number; payload: { value: string } };
 
@@ -78,17 +80,16 @@ export default function TopModelsBar({
   const [hi, setHi] = useState<number | null>(null);
   const data = prepare(entries, Math.min(topN, 4));
 
+  const total = data.reduce((s, d: any) => s + Number(d.usd ?? d.cost ?? 0), 0);
+
+
   const MIN_RENDER_USD = 0.01;
   const grandTotal = data.reduce((sum, d: any) => sum + Number(d.usd ?? d.cost ?? 0), 0);
 
   return (
     <div role="img" aria-label={ariaLabel} className="h-[var(--h,240px)]" style={{ ['--h' as any]: `${height}px` }}>
       <ResponsiveContainer width="100%" height={height}>
-        {grandTotal < MIN_RENDER_USD ? (
-          <div className="h-full w-full flex items-center justify-center text-slate-400 text-sm">
-            Negligible Spend So Far - Add More Usage To See Trends
-          </div>
-        ) : (
+        {hasMeaningful(grandTotal) ? (
         <BarChart
           data={data}
           margin={{ left: 8, right: 16, top: 16, bottom: -8 }}
@@ -137,7 +138,9 @@ export default function TopModelsBar({
             ))}
           </Bar>
         </BarChart>
-        )}
+          ) : (
+        <ChartPlaceholder />
+      )}
       </ResponsiveContainer>
     </div>
   );

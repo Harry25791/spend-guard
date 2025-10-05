@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/Buttons"; // ← ADDED
 ----------------------------------------------------------------------------- */
 const HERO_MIN_VH = 70;              // hero min height as % of viewport height (minus header)
 const FORM_OFFSET_Y = -360;          // px to nudge the Add Project card up/down
-const STAGGER_TRIGGER_PCT = 0.001;   // how far you scroll past the hero before table reveals (0..1)
+const STAGGER_TRIGGER_PCT = 0.0001;   // how far you scroll past the hero before table reveals (0..1)
 const HERO_GAP = -160;               // px space between hero and table (negative closes gap)
 
 // Use a DIFFERENT image from Home if you like:

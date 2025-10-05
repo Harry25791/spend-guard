@@ -151,3 +151,43 @@ body {
 @media (min-width: 1024px) {
   .lg\:sg-hero-ty { transform: translateY(var(--ty-lg, var(--ty-md, var(--ty, 0)))); }
 }
+
+/* Brand scrollbars for popover menus (Chrome/Edge/Safari + Firefox) */
+.scrollbar-brand {
+  scrollbar-width: thin;                 /* Firefox */
+  scrollbar-color: #C277FF transparent;  /* thumb | track */
+}
+.scrollbar-brand::-webkit-scrollbar {     /* WebKit */
+  width: 10px;
+}
+.scrollbar-brand::-webkit-scrollbar-track {
+  background: transparent;               /* hide the white track */
+}
+.scrollbar-brand::-webkit-scrollbar-thumb {
+  background-color: #C277FF;             /* brand violet */
+  border-radius: 999px;
+  border: 2px solid transparent;         /* keeps it airy */
+  background-clip: padding-box;
+}
+
+/* Dark-themed date inputs */
+.sg-date {
+  color-scheme: dark;           /* native popover uses dark UI */
+  color: rgba(226,232,240,.9);  /* text color on the field */
+}
+
+/* Tweak the internal parts (WebKit) */
+.sg-date::-webkit-datetime-edit,
+.sg-date::-webkit-datetime-edit-fields-wrapper,
+.sg-date::-webkit-datetime-edit-text,
+.sg-date::-webkit-datetime-edit-month-field,
+.sg-date::-webkit-datetime-edit-day-field,
+.sg-date::-webkit-datetime-edit-year-field {
+  color: rgba(226,232,240,.55);
+}
+
+/* Calendar icon tint (WebKit) */
+.sg-date::-webkit-calendar-picker-indicator {
+  filter: hue-rotate(275deg) saturate(140%) brightness(1.05);
+  opacity: .9;
+}

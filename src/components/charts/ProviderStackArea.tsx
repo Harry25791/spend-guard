@@ -4,6 +4,8 @@ import { LineChart, Line, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, Ca
 import { buildProviderStack, type Period } from "@/lib/aggregate";
 import { autoPeriod, fmtUsd } from "./utils";
 import { chartTheme, rgba } from "./theme";
+import ChartPlaceholder from "./ChartPlaceholder";
+import { hasMeaningful, sumByKeys } from "./meaningful";
 
 type Entry = { date: string | Date; cost: number; provider?: string };
 type Props = {
@@ -71,28 +73,37 @@ export default function ProviderStackArea({
   ];
 
   // Color order: 0, 3, 4, 7, 8 (truncate to series count)
-  const paletteIdx = [0, 3, 4, 7, 8];
-  const paletteOrder = stackProviders.map(
-    (_, i) => chartTheme.series[paletteIdx[i % paletteIdx.length]]
-  );
+  // Make the top provider (first non-"Other") primary color and draw it last (on top)
+  const primaryProvider = stackProviders.find((p) => p !== "Other");
+
+  // Draw order: everyone else first, then the primary last so its line is on top
+  const drawProviders = primaryProvider
+    ? [...stackProviders.filter((p) => p !== primaryProvider), primaryProvider]
+    : [...stackProviders];
+
+  // Color map: primary -> series[0], others -> series[3], [4], [7], [8]
+  const remainingIdx = [3, 4, 7, 8];
+  const colorMap = new Map<string, string>();
+  let idx = 0;
+  for (const p of drawProviders) {
+    if (p === primaryProvider) {
+      colorMap.set(p, chartTheme.series[0]); // primary brand color
+    } else {
+      colorMap.set(p, chartTheme.series[remainingIdx[idx % remainingIdx.length]]);
+      idx++;
+    }
+  }
 
   // Negligible data threshold (adjust if you like)
   const MIN_RENDER_USD = 0.01;
 
   // Grand total across the rendered series
-  const grandTotal = stackProviders.reduce((sum, p) => sum + (p === "Other"
-    ? stackRows.reduce((s, r) => s + Number(r["Other"] ?? 0), 0)
-    : stackRows.reduce((s, r) => s + Number((r as any)[p] ?? 0), 0)
-  ), 0);
+  const grandTotal = sumByKeys(stackRows as any[], stackProviders as string[]);
 
   return (
     <div aria-label={ariaLabel} className="w-full">
       <ResponsiveContainer width="100%" height={height}>
-        {grandTotal < MIN_RENDER_USD ? (
-          <div className="h-full w-full flex items-center justify-center text-slate-400 text-sm">
-            Negligible Spend So Far - Add More Usage To See Trends
-          </div>
-        ) : (
+        {hasMeaningful(grandTotal) ? (
         <LineChart data={stackRows} margin={{ top: 8, right: 16, bottom: chartTheme.axis.fontSize * 1, left: 8 }}>
           <CartesianGrid stroke={chartTheme.grid.stroke} />
           <XAxis
@@ -124,8 +135,8 @@ export default function ProviderStackArea({
             formatter={(val: number) => fmtUsd(val)}
           />
           <Legend wrapperStyle={{ color: chartTheme.tooltip.color }} />
-          {stackProviders.map((p, i) => {
-            const color = paletteOrder[i];
+          {drawProviders.map((p) => {
+            const color = colorMap.get(p)!;
             return (
               <Line
                 key={p}
@@ -140,7 +151,9 @@ export default function ProviderStackArea({
             );
           })}
         </LineChart>
-        )}
+        ) : (
+        <ChartPlaceholder />
+      )}
       </ResponsiveContainer>
     </div>
   );
