@@ -55,55 +55,6 @@ function TwoLineTick({ x, y, payload }: TickProps) {
   );
 }
 
-type TickProps = { x: number; y: number; payload: { value: string } };
-
-// Wrap into max 2 lines; add ellipsis ONLY if text overflows the 2nd line
-function TwoLineTick({ x, y, payload }: TickProps) {
-  const maxCharsPerLine = 12; // wider lines than before (reduce truncation)
-  const text = String(payload?.value ?? '').trim();
-  if (!text) return null;
-
-  const words = text.split(/[\s/_-]+/); // split on spaces + common separators
-  const lines: string[] = [''];         // start with first line
-  let idx = 0;
-
-  for (const w of words) {
-    const tryAdd = lines[idx] ? `${lines[idx]} ${w}` : w;
-    if (tryAdd.length <= maxCharsPerLine) {
-      lines[idx] = tryAdd;              // fits current line
-      continue;
-    }
-    // doesn't fit current line
-    if (idx === 0) {
-      idx = 1;
-      lines[idx] = w;                   // move to second line
-      continue;
-    }
-    // overflow on the second line -> ellipsize and stop
-    const second = (lines[1] ? `${lines[1]} ${w}` : w).slice(0, maxCharsPerLine - 1) + '…';
-    lines[1] = second;
-    break;
-  }
-
-  // If the full text fit within two lines, DO NOT add ellipsis
-  // (above logic only adds '…' when a word causes overflow)
-
-  return (
-    <g transform={`translate(${x},${y})`}>
-      <text textAnchor="middle" fontSize={chartTheme.axis.fontSize}>
-        <tspan x={0} dy="0.71em" fill={chartTheme.axis.tick.fill}>
-          {lines[0]}
-        </tspan>
-        {lines[1] && (
-          <tspan x={0} dy={chartTheme.axis.fontSize} fill={chartTheme.axis.tick.fill}>
-            {lines[1]}
-          </tspan>
-        )}
-      </text>
-    </g>
-  );
-}
-
 type Entry = { model?: string; cost: number };
 
 function prepare(entries: Entry[], topN: number) {
