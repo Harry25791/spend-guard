@@ -27,6 +27,9 @@ import {
 import { PROVIDER_MODELS, normalizeProvider, getModelRate, type ProviderKey } from "@/lib/rates";
 import { estimateTokens } from "@/lib/token";
 import KPIRow from "@/components/dashboard/KPIRow";
+import GlassSelect from "@/components/ui/GlassSelect";
+import ConfirmModal from "@/components/modals/ConfirmModal";
+import InlinePromptModal from "@/components/modals/InlinePromptModal"; 
 
 type UsageEntry = EntryV2;
 
@@ -58,6 +61,7 @@ export default function ProjectDetail() {
   const [date, setDate] = useState("");
   const [selectedProvider, setSelectedProvider] = useState<string>("");
   const [selectedModel, setSelectedModel] = useState<string>("");
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   // Fallbacks: from URL and from existing entries
   const queryProviderKey: ProviderKey | null = normalizeProvider(provider || "");
@@ -78,6 +82,23 @@ export default function ProjectDetail() {
 
   const [tokens, setTokens] = useState<number>(0);
   const [manualTokens, setManualTokens] = useState(false);
+
+  // Slick replacement for window.prompt (single-field modal)
+  const [promptOpen, setPromptOpen] = useState(false);
+  const [promptTitle, setPromptTitle] = useState("");
+  const [promptPlaceholder, setPromptPlaceholder] = useState("");
+  const [promptInitial, setPromptInitial] = useState("");
+  const [onPromptSubmit, setOnPromptSubmit] = useState<(v: string) => void>(() => () => {});
+  const openPrompt = useCallback(
+    (title: string, placeholder: string, onSubmit: (v: string) => void, initial = "") => {
+      setPromptTitle(title);
+      setPromptPlaceholder(placeholder);
+      setPromptInitial(initial);
+      setOnPromptSubmit(() => onSubmit);
+      setPromptOpen(true);
+    },
+    []
+  );
 
   // NOTE: intentionally NOT auto-selecting provider from URL param anymore.
 
@@ -272,7 +293,11 @@ export default function ProjectDetail() {
 
   const cancelEdit = () => { setIsEditOpen(false); setEditingId(null); };
   const deleteEntry = (id: string) => setEntries(entries.filter((e) => e.id !== id));
-  const clearAllEntries = () => { if (window.confirm("Are you sure you want to clear all entries?")) setEntries([]); };
+  const clearAllEntries = () => setConfirmOpen(true);
+  const doClearAll = useCallback(() => {
+    setEntries([]);
+    setConfirmOpen(false);
+  }, []);
 
   // ── View scope (global)
   const [scope, setScopeState] = useState<ViewScope>("month");
@@ -393,69 +418,68 @@ export default function ProjectDetail() {
             type="date"
             value={date}
             onChange={(e) => setDate(e.target.value)}
-            className="rounded-lg bg-slate-800/60 border border-white/10 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-cyan-500/60"
+            className="sg-date w-full rounded-xl bg-slate-900/60 border border-white/10 px-3 py-2"
           />
 
           {/* Provider */}
-          <div className="relative">
-            <select
-              value={selectedProvider}
-              onChange={(e) => {
-                const v = e.target.value;
-                if (v === "other") {
-                  const prov = window.prompt("Provider name?");
-                  const model = window.prompt("Model name?");
-                  const rateStr = window.prompt("Rate in $ per 1k tokens?");
-                  const rateNum = rateStr ? Number(rateStr) : undefined;
-                  if (!prov || !model || !rateNum || rateNum <= 0 || Number.isNaN(rateNum)) {
-                    alert("Invalid custom provider/model/rate. Please try again.");
-                    return;
-                  }
-                  setSelectedProvider(prov.trim());
-                  setSelectedModel(model.trim());
-                  setCustomRate(rateNum);
-                } else {
-                  setSelectedProvider(v);
-                  setSelectedModel("");
-                  setCustomRate(undefined);
-                }
-              }}
-              className="w-full appearance-none rounded-lg bg-slate-800/60 border border-white/10 text-slate-100 px-3 py-2 pr-8 focus:outline-none focus:ring-2 focus:ring-cyan-500/60 disabled:bg-slate-700/40 disabled:text-slate-400 disabled:cursor-not-allowed"
-            >
-              {/* Placeholder to force explicit selection */}
-              <option value="">Select provider</option>
-              {["openai","anthropic","mistral","google","deepseek","other"].map(p => (
-                <option key={p} value={p}>{p === "other" ? "Other…" : p}</option>
-              ))}
-            </select>
-            <svg className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-300"
-                 viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-              <path d="M5.23 7.21a.75.75 0 011.06.02L10 11.17l3.71-3.94a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01-1.06z"/>
-            </svg>
-          </div>
+          <GlassSelect
+            value={selectedProvider}
+            options={[
+              { value: "", label: "Select provider" },
+              { value: "openai", label: "OpenAI" },
+              { value: "anthropic", label: "Anthropic" },
+              { value: "mistral", label: "Mistral" },
+              { value: "google", label: "Google" },
+              { value: "deepseek", label: "DeepSeek" },
+              { value: "other", label: "Other…" },
+            ]}
+            onChange={(v) => {
+              if (v === "other") {
+                // Step 1: Provider
+                openPrompt("Other provider", "e.g. mycloud.ai", (prov) => {
+                  if (!prov) return;
+                  // Step 2: Model
+                  openPrompt("Model name", "e.g. turbo-128k", (model) => {
+                    if (!model) return;
+                    // Step 3: Rate
+                    openPrompt("Rate ($ per 1k tokens)", "e.g. 0.60", (rateStr) => {
+                      const rateNum = Number(rateStr);
+                      if (!rateStr || Number.isNaN(rateNum) || rateNum <= 0) return;
+                      setSelectedProvider(prov.trim());
+                      setSelectedModel(model.trim());
+                      setCustomRate(rateNum);
+                      setPromptOpen(false); // close after the last step
+                    });
+                  });
+                });
+                return;
+              }
+              setSelectedProvider(v);
+              setSelectedModel("");
+              setCustomRate(undefined);
+            }}
+          />
 
           {/* Model */}
-          <div className="relative">
-            <select
-              key={activeProviderKey || (customRate !== undefined ? "custom" : "none")}
-              value={selectedModel}
-              onChange={(e) => setSelectedModel(e.target.value)}
-              disabled={!activeProviderKey && customRate === undefined}
-              className={`w-full appearance-none rounded-lg bg-slate-800/60 border border-white/10 text-slate-100 px-3 py-2 pr-8 focus:outline-none focus:ring-2 focus:ring-cyan-500/60 disabled:bg-slate-700/40 disabled:text-slate-400 ${
-                !activeProviderKey && customRate === undefined ? "cursor-not-allowed" : "cursor-pointer"
-              }`}
-            >
-              <option value="">{activeProviderKey ? "Select model" : "Choose a provider first"}</option>
-              {activeProviderKey &&
-                modelOptions.map(m => (
-                  <option key={m.model} value={m.model}>{m.model}</option>
-                ))}
-            </select>
-            <svg className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-300"
-                 viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-              <path d="M5.23 7.21a.75.75 0 011.06.02L10 11.17l3.71-3.94a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01-1.06z"/>
-            </svg>
-          </div>
+          <GlassSelect
+            value={selectedModel}
+            options={
+              !activeProviderKey && customRate === undefined
+                ? [{ value: "", label: "Choose a provider first" }]
+                : [
+                    { value: "", label: "Select model" },
+                    ...modelOptions.map(m => ({ value: m.model, label: m.model })),
+                    { value: "other", label: "Other…" },
+                  ]
+            }
+            onChange={(v) => {
+              if (v === "other") {
+                openPrompt("Model name", "e.g. turbo-128k", (model) => { if (model) setSelectedModel(model.trim()); });
+                return;
+              }
+              setSelectedModel(v);
+            }}
+          />
         </form>
 
         {/* Manual tokens input */}
@@ -721,40 +745,40 @@ export default function ProjectDetail() {
               <div>
                 <label className="block text-sm mb-1">Provider</label>
                 <div className="relative">
-                  <select
+                  <GlassSelect
                     value={draftProvider || (activeDraftProviderKey || "")}
-                    onChange={(e) => {
-                      const v = e.target.value;
+                    options={[
+                      { value: "", label: "Select provider" },
+                      { value: "openai", label: "OpenAI" },
+                      { value: "anthropic", label: "Anthropic" },
+                      { value: "mistral", label: "Mistral" },
+                      { value: "google", label: "Google" },
+                      { value: "deepseek", label: "DeepSeek" },
+                      { value: "other", label: "Other…" },
+                    ]}
+                    onChange={(v) => {
                       if (v === "other") {
-                        const prov = window.prompt("Provider name?");
-                        const model = window.prompt("Model name?");
-                        const rateStr = window.prompt("Rate in $ per 1k tokens?");
-                        const rateNum = rateStr ? Number(rateStr) : undefined;
-                        if (!prov || !model || !rateNum || rateNum <= 0 || Number.isNaN(rateNum)) {
-                          alert("Invalid custom provider/model/rate. Please try again.");
-                          return;
-                        }
-                        setDraftProvider(prov.trim());
-                        setDraftModel(model.trim());
-                        setDraftCustomRate(rateNum);
-                      } else {
-                        setDraftProvider(v);
-                        setDraftModel("");
-                        setDraftCustomRate(undefined);
+                        openPrompt("Other provider", "e.g. mycloud.ai", (prov) => {
+                          if (!prov) return;
+                          openPrompt("Model name", "e.g. turbo-128k", (model) => {
+                            if (!model) return;
+                            openPrompt("Rate ($ per 1k tokens)", "e.g. 0.60", (rateStr) => {
+                              const rateNum = Number(rateStr);
+                              if (!rateStr || Number.isNaN(rateNum) || rateNum <= 0) return;
+                              setDraftProvider(prov.trim());
+                              setDraftModel(model.trim());
+                              setDraftCustomRate(rateNum);
+                              setPromptOpen(false); // close after the last step
+                            });
+                          });
+                        });
+                        return;
                       }
+                      setDraftProvider(v);
+                      setDraftModel("");
+                      setDraftCustomRate(undefined);
                     }}
-                    className="w-full appearance-none rounded-lg bg-slate-800/60 border border-white/10 text-slate-100 px-3 py-2 pr-8 focus:outline-none focus:ring-2 focus:ring-cyan-500/60"
-                  >
-                    {/* Add placeholder for consistency; existing rows will still show their value */}
-                    {!draftProvider && <option value="">Select provider</option>}
-                    {draftProvider &&
-                      !["openai","anthropic","mistral","google","deepseek"].includes((normalizeProvider(draftProvider)||"")) && (
-                        <option value={draftProvider}>{draftProvider}</option>
-                      )}
-                    {["openai","anthropic","mistral","google","deepseek","other"].map(p => (
-                      <option key={p} value={p}>{p === "other" ? "Other…" : p}</option>
-                    ))}
-                  </select>
+                  />
                   <svg className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-300"
                        viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
                     <path d="M5.23 7.21a.75.75 0 011.06.02L10 11.17l3.71-3.94a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01-1.06z"/>
@@ -765,21 +789,25 @@ export default function ProjectDetail() {
               <div>
                 <label className="block text-sm mb-1">Model</label>
                 <div className="relative">
-                  <select
-                    key={activeDraftProviderKey || (draftCustomRate !== undefined ? "custom" : "none")}
+                  <GlassSelect
                     value={draftModel}
-                    onChange={(e) => setDraftModel(e.target.value)}
-                    disabled={!activeDraftProviderKey && draftCustomRate === undefined}
-                    className={`w-full appearance-none rounded-lg bg-slate-800/60 border border-white/10 text-slate-100 px-3 py-2 pr-8 focus:outline-none focus:ring-2 focus:ring-cyan-500/60 disabled:bg-slate-700/40 disabled:text-slate-400 ${
-                      !activeDraftProviderKey && draftCustomRate === undefined ? "cursor-not-allowed" : "cursor-pointer"
-                    }`}
-                  >
-                    <option value="">{activeDraftProviderKey ? "Select model" : "Choose a provider first"}</option>
-                    {activeDraftProviderKey &&
-                      draftModelOptions.map(m => (
-                        <option key={m.model} value={m.model}>{m.model}</option>
-                      ))}
-                  </select>
+                    options={
+                      !activeDraftProviderKey && draftCustomRate === undefined
+                        ? [{ value: "", label: "Choose a provider first" }]
+                        : [
+                            { value: "", label: "Select model" },
+                            ...draftModelOptions.map(m => ({ value: m.model, label: m.model })),
+                            { value: "other", label: "Other…" },
+                          ]
+                    }
+                    onChange={(v) => {
+                      if (v === "other") {
+                        openPrompt("Model name", "e.g. turbo-128k", (model) => { if (model) setDraftModel(model.trim()); });
+                        return;
+                      }
+                      setDraftModel(v);
+                    }}
+                  />
                   <svg className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-300"
                        viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
                     <path d="M5.23 7.21a.75.75 0 011.06.02L10 11.17l3.71-3.94a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01-1.06z"/>
@@ -803,6 +831,23 @@ export default function ProjectDetail() {
           </div>
         </div>
       )}
+      <InlinePromptModal
+        open={promptOpen}
+        title={promptTitle}
+        placeholder={promptPlaceholder}
+        initialValue={promptInitial}
+        onClose={() => setPromptOpen(false)}
+        onSubmit={(v) => onPromptSubmit(v)}
+      />
+      <ConfirmModal
+        open={confirmOpen}
+        title="Clear all entries?"
+        message="This will permanently delete all entries for this project."
+        confirmLabel="Delete all"
+        cancelLabel="Cancel"
+        onCancel={() => setConfirmOpen(false)}
+        onConfirm={doClearAll}
+      />
     </div>
   );
 }

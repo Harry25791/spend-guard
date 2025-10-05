@@ -8,6 +8,7 @@ import SGCard from "@/components/ui/SGCard";
 import KPIRow from "@/components/dashboard/KPIRow";
 import HeroAvatar from "@/components/ui/HeroAvatar";
 import { Button } from "@/components/ui/Buttons"; // ← ADDED
+import ConfirmModal from "@/components/modals/ConfirmModal";
 
 // Charts (Free tier)
 import Timeline from "@/components/charts/Timeline";
@@ -284,6 +285,16 @@ export default function Home() {
   // Ref for Import JSON (used only for the button -> hidden input trigger)
   const importInputRef = useRef<HTMLInputElement>(null); // ← ADDED
 
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const doClearProjects = useCallback(() => {
+    setProjects([]);
+    Object.keys(localStorage).forEach((key) => {
+      if (key.startsWith("entries-")) localStorage.removeItem(key);
+    });
+    localStorage.removeItem("projects");
+    setConfirmOpen(false);
+  }, []);
+
   // Render
   return (
     <>
@@ -420,15 +431,7 @@ export default function Home() {
                   <Button
                     variant="danger"
                     size="sm"
-                    onClick={() => {
-                      if (window.confirm("Are you sure you want to clear all projects?")) {
-                        setProjects([]);
-                        Object.keys(localStorage).forEach((key) => {
-                          if (key.startsWith("entries-")) localStorage.removeItem(key);
-                        });
-                        localStorage.removeItem("projects");
-                      }
-                    }}
+                    onClick={() => setConfirmOpen(true)}
                   >
                     Clear All Projects
                   </Button>
@@ -438,6 +441,15 @@ export default function Home() {
           </ClientOnly>
         </div>
       </div>
+      <ConfirmModal
+        open={confirmOpen}
+        title="Clear all projects?"
+        message="This will permanently remove every project and all entries."
+        confirmLabel="Delete all"
+        cancelLabel="Cancel"
+        onCancel={() => setConfirmOpen(false)}
+        onConfirm={doClearProjects}
+      />
     </>
   );
 }
