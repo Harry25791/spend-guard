@@ -1,6 +1,5 @@
 // src/components/charts/ProviderStackArea.tsx
 "use client";
-import type { ComponentProps } from "react";
 import {
   LineChart,
   Line,
@@ -10,7 +9,6 @@ import {
   Legend,
   ResponsiveContainer,
   CartesianGrid,
-  DefaultLegendContent,
   type LegendPayload,
 } from "recharts";
 import { buildProviderStack, type Period } from "@/lib/aggregate";
@@ -110,23 +108,23 @@ export default function ProviderStackArea({
     ? [...drawProviders.filter((p) => p !== "Other"), "Other"]
     : drawProviders;
 
-  const legendPayload: LegendPayload[] = legendProviders.map((provider) => ({
-    value: provider,
-    color: rgba(colorMap.get(provider)!, 0.95),
-    type: "line" as const,
-    id: provider,
-    dataKey: provider,
-  }));
+  const legendOrder = new Map<string, number>();
+  legendProviders.forEach((provider, index) => {
+    legendOrder.set(provider, index);
+  });
+
+  const legendSorter = (entry: LegendPayload) => {
+    const key =
+      (typeof entry.value === "string" && entry.value) ||
+      (typeof entry.dataKey === "string" ? entry.dataKey : undefined);
+    return key !== undefined ? legendOrder.get(key) ?? legendProviders.length : legendProviders.length;
+  };
 
   // Negligible data threshold (adjust if you like)
   const MIN_RENDER_USD = 0.01;
 
   // Grand total across the rendered series
   const grandTotal = sumByKeys(stackRows as any[], stackProviders as string[]);
-
-  const legendRenderer = (
-    props: ComponentProps<typeof DefaultLegendContent>,
-  ) => <DefaultLegendContent {...props} payload={legendPayload} />;
 
   return (
     <div aria-label={ariaLabel} className="w-full">
@@ -167,7 +165,7 @@ export default function ProviderStackArea({
             />
             <Legend
               wrapperStyle={{ color: chartTheme.tooltip.color }}
-              content={legendRenderer}
+              itemSorter={legendSorter}
             />
             {drawProviders.map((p) => {
               const color = colorMap.get(p)!;
