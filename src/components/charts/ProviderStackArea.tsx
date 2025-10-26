@@ -9,10 +9,7 @@ import {
   Legend,
   ResponsiveContainer,
   CartesianGrid,
-  DefaultLegendContent,
-  type LegendProps,
   type LegendPayload,
-  type DefaultLegendContentProps,
 } from "recharts";
 import { buildProviderStack, type Period } from "@/lib/aggregate";
 import { autoPeriod, fmtUsd } from "./utils";
@@ -94,10 +91,6 @@ export default function ProviderStackArea({
     ? [...stackProviders.filter((p) => p !== primaryProvider), primaryProvider]
     : [...stackProviders];
 
-  const legendProviders = drawProviders.includes("Other")
-    ? [...drawProviders.filter((p) => p !== "Other"), "Other"]
-    : drawProviders;
-
   // Color map: primary -> series[0], others -> series[3], [4], [7], [8]
   const remainingIdx = [3, 4, 7, 8];
   const colorMap = new Map<string, string>();
@@ -111,33 +104,17 @@ export default function ProviderStackArea({
     }
   }
 
+  const legendProviders = drawProviders.includes("Other")
+    ? [...drawProviders.filter((p) => p !== "Other"), "Other"]
+    : drawProviders;
+
   const legendPayload: LegendPayload[] = legendProviders.map((provider) => ({
     value: provider,
     color: rgba(colorMap.get(provider)!, 0.95),
-    type: "line",
+    type: "line" as const,
     id: provider,
     dataKey: provider,
   }));
-
-  const renderLegend: LegendProps["content"] = (props) => {
-    const defaultLegendProps: DefaultLegendContentProps = {
-      align: props.align,
-      verticalAlign: props.verticalAlign,
-      layout: props.layout,
-      iconSize: props.iconSize,
-      iconType: props.iconType,
-      formatter: props.formatter,
-      inactiveColor: props.inactiveColor,
-      className: props.className,
-      style: props.style,
-      onClick: props.onClick,
-      onMouseEnter: props.onMouseEnter,
-      onMouseLeave: props.onMouseLeave,
-      payload: legendPayload,
-    };
-
-    return <DefaultLegendContent {...defaultLegendProps} />;
-  };
 
   // Negligible data threshold (adjust if you like)
   const MIN_RENDER_USD = 0.01;
@@ -182,7 +159,7 @@ export default function ProviderStackArea({
               itemStyle={{ color: chartTheme.tooltip.color }}
               formatter={(val: number) => fmtUsd(val)}
             />
-            <Legend wrapperStyle={{ color: chartTheme.tooltip.color }} content={renderLegend} />
+            <Legend wrapperStyle={{ color: chartTheme.tooltip.color }} payload={legendPayload} />
             {drawProviders.map((p) => {
               const color = colorMap.get(p)!;
               return (
