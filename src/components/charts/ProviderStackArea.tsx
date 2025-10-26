@@ -1,5 +1,6 @@
 // src/components/charts/ProviderStackArea.tsx
 "use client";
+import type { ComponentProps } from "react";
 import {
   LineChart,
   Line,
@@ -9,6 +10,7 @@ import {
   Legend,
   ResponsiveContainer,
   CartesianGrid,
+  DefaultLegendContent,
   type LegendPayload,
 } from "recharts";
 import { buildProviderStack, type Period } from "@/lib/aggregate";
@@ -122,6 +124,10 @@ export default function ProviderStackArea({
   // Grand total across the rendered series
   const grandTotal = sumByKeys(stackRows as any[], stackProviders as string[]);
 
+  const legendRenderer = (
+    props: ComponentProps<typeof DefaultLegendContent>,
+  ) => <DefaultLegendContent {...props} payload={legendPayload} />;
+
   return (
     <div aria-label={ariaLabel} className="w-full">
       <ResponsiveContainer width="100%" height={height}>
@@ -159,7 +165,10 @@ export default function ProviderStackArea({
               itemStyle={{ color: chartTheme.tooltip.color }}
               formatter={(val: number) => fmtUsd(val)}
             />
-            <Legend wrapperStyle={{ color: chartTheme.tooltip.color }} payload={legendPayload} />
+            <Legend
+              wrapperStyle={{ color: chartTheme.tooltip.color }}
+              content={legendRenderer}
+            />
             {drawProviders.map((p) => {
               const color = colorMap.get(p)!;
               return (
