@@ -12,6 +12,7 @@ import {
   DefaultLegendContent,
   type LegendProps,
   type LegendPayload,
+  type DefaultLegendContentProps,
 } from "recharts";
 import { buildProviderStack, type Period } from "@/lib/aggregate";
 import { autoPeriod, fmtUsd } from "./utils";
@@ -118,9 +119,25 @@ export default function ProviderStackArea({
     dataKey: provider,
   }));
 
-  const renderLegend: LegendProps["content"] = (props) => (
-    <DefaultLegendContent {...props} payload={legendPayload} />
-  );
+  const renderLegend: LegendProps["content"] = (props) => {
+    const defaultLegendProps: DefaultLegendContentProps = {
+      align: props.align,
+      verticalAlign: props.verticalAlign,
+      layout: props.layout,
+      iconSize: props.iconSize,
+      iconType: props.iconType,
+      formatter: props.formatter,
+      inactiveColor: props.inactiveColor,
+      className: props.className,
+      style: props.style,
+      onClick: props.onClick,
+      onMouseEnter: props.onMouseEnter,
+      onMouseLeave: props.onMouseLeave,
+      payload: legendPayload,
+    };
+
+    return <DefaultLegendContent {...defaultLegendProps} />;
+  };
 
   // Negligible data threshold (adjust if you like)
   const MIN_RENDER_USD = 0.01;
@@ -132,56 +149,59 @@ export default function ProviderStackArea({
     <div aria-label={ariaLabel} className="w-full">
       <ResponsiveContainer width="100%" height={height}>
         {hasMeaningful(grandTotal) ? (
-        <LineChart data={stackRows} margin={{ top: 8, right: 16, bottom: chartTheme.axis.fontSize * 1, left: 8 }}>
-          <CartesianGrid stroke={chartTheme.grid.stroke} />
-          <XAxis
-            dataKey="key"
-            axisLine={{ stroke: chartTheme.axis.line.stroke }}
-            tickLine={{ stroke: chartTheme.axis.line.stroke }}
-            tick={{ fill: chartTheme.axis.tick.fill, fontSize: chartTheme.axis.fontSize - 1 }}
-            tickMargin={8}
-            minTickGap={18}
-          />
-          <YAxis
-            axisLine={{ stroke: chartTheme.axis.line.stroke }}
-            tickLine={{ stroke: chartTheme.axis.line.stroke }}
-            tick={{ fill: chartTheme.axis.tick.fill, fontSize: chartTheme.axis.fontSize }}
-            stroke={chartTheme.axis.line.stroke}
-            tickFormatter={(v) => fmtUsd(v as number)}
-            width={60}
-          />
-          <Tooltip
-            cursor={chartTheme.hoverCursor}
-            contentStyle={{
-              background: chartTheme.tooltip.bg,
-              border: chartTheme.tooltip.border,
-              borderRadius: chartTheme.tooltip.radius,
-              color: chartTheme.tooltip.color,
-            }}
-            labelStyle={{ color: chartTheme.tooltip.color }}
-            itemStyle={{ color: chartTheme.tooltip.color }}
-            formatter={(val: number) => fmtUsd(val)}
-          />
-          <Legend wrapperStyle={{ color: chartTheme.tooltip.color }} content={renderLegend} />
-          {drawProviders.map((p) => {
-            const color = colorMap.get(p)!;
-            return (
-              <Line
-                key={p}
-                type="monotone"
-                dataKey={p}
-                stroke={rgba(color, 0.95)}
-                strokeWidth={3}
-                dot={false}
-                activeDot={{ r: 2.5, style: { filter: chartTheme.shadowCss.glowSm } }}
-                isAnimationActive={false}
-              />
-            );
-          })}
-        </LineChart>
+          <LineChart
+            data={stackRows}
+            margin={{ top: 8, right: 16, bottom: chartTheme.axis.fontSize * 1, left: 8 }}
+          >
+            <CartesianGrid stroke={chartTheme.grid.stroke} />
+            <XAxis
+              dataKey="key"
+              axisLine={{ stroke: chartTheme.axis.line.stroke }}
+              tickLine={{ stroke: chartTheme.axis.line.stroke }}
+              tick={{ fill: chartTheme.axis.tick.fill, fontSize: chartTheme.axis.fontSize - 1 }}
+              tickMargin={8}
+              minTickGap={18}
+            />
+            <YAxis
+              axisLine={{ stroke: chartTheme.axis.line.stroke }}
+              tickLine={{ stroke: chartTheme.axis.line.stroke }}
+              tick={{ fill: chartTheme.axis.tick.fill, fontSize: chartTheme.axis.fontSize }}
+              stroke={chartTheme.axis.line.stroke}
+              tickFormatter={(v) => fmtUsd(v as number)}
+              width={60}
+            />
+            <Tooltip
+              cursor={chartTheme.hoverCursor}
+              contentStyle={{
+                background: chartTheme.tooltip.bg,
+                border: chartTheme.tooltip.border,
+                borderRadius: chartTheme.tooltip.radius,
+                color: chartTheme.tooltip.color,
+              }}
+              labelStyle={{ color: chartTheme.tooltip.color }}
+              itemStyle={{ color: chartTheme.tooltip.color }}
+              formatter={(val: number) => fmtUsd(val)}
+            />
+            <Legend wrapperStyle={{ color: chartTheme.tooltip.color }} content={renderLegend} />
+            {drawProviders.map((p) => {
+              const color = colorMap.get(p)!;
+              return (
+                <Line
+                  key={p}
+                  type="monotone"
+                  dataKey={p}
+                  stroke={rgba(color, 0.95)}
+                  strokeWidth={3}
+                  dot={false}
+                  activeDot={{ r: 2.5, style: { filter: chartTheme.shadowCss.glowSm } }}
+                  isAnimationActive={false}
+                />
+              );
+            })}
+          </LineChart>
         ) : (
-        <ChartPlaceholder />
-      )}
+          <ChartPlaceholder />
+        )}
       </ResponsiveContainer>
     </div>
   );
