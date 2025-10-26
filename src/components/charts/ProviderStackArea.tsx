@@ -9,7 +9,9 @@ import {
   Legend,
   ResponsiveContainer,
   CartesianGrid,
+  DefaultLegendContent,
   type LegendProps,
+  type LegendPayload,
 } from "recharts";
 import { buildProviderStack, type Period } from "@/lib/aggregate";
 import { autoPeriod, fmtUsd } from "./utils";
@@ -108,13 +110,17 @@ export default function ProviderStackArea({
     }
   }
 
-  const legendPayload: LegendProps["payload"] = legendProviders.map((provider) => ({
+  const legendPayload: LegendPayload[] = legendProviders.map((provider) => ({
     value: provider,
     color: rgba(colorMap.get(provider)!, 0.95),
     type: "line",
     id: provider,
     dataKey: provider,
   }));
+
+  const renderLegend: LegendProps["content"] = (props) => (
+    <DefaultLegendContent {...props} payload={legendPayload} />
+  );
 
   // Negligible data threshold (adjust if you like)
   const MIN_RENDER_USD = 0.01;
@@ -156,7 +162,7 @@ export default function ProviderStackArea({
             itemStyle={{ color: chartTheme.tooltip.color }}
             formatter={(val: number) => fmtUsd(val)}
           />
-          <Legend wrapperStyle={{ color: chartTheme.tooltip.color }} payload={legendPayload} />
+          <Legend wrapperStyle={{ color: chartTheme.tooltip.color }} content={renderLegend} />
           {drawProviders.map((p) => {
             const color = colorMap.get(p)!;
             return (
