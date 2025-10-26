@@ -1,6 +1,16 @@
 // src/components/charts/ProviderStackArea.tsx
 "use client";
-import { LineChart, Line, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, CartesianGrid } from "recharts";
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+  CartesianGrid,
+  type LegendProps,
+} from "recharts";
 import { buildProviderStack, type Period } from "@/lib/aggregate";
 import { autoPeriod, fmtUsd } from "./utils";
 import { chartTheme, rgba } from "./theme";
@@ -81,6 +91,10 @@ export default function ProviderStackArea({
     ? [...stackProviders.filter((p) => p !== primaryProvider), primaryProvider]
     : [...stackProviders];
 
+  const legendProviders = drawProviders.includes("Other")
+    ? [...drawProviders.filter((p) => p !== "Other"), "Other"]
+    : drawProviders;
+
   // Color map: primary -> series[0], others -> series[3], [4], [7], [8]
   const remainingIdx = [3, 4, 7, 8];
   const colorMap = new Map<string, string>();
@@ -93,6 +107,14 @@ export default function ProviderStackArea({
       idx++;
     }
   }
+
+  const legendPayload: LegendProps["payload"] = legendProviders.map((provider) => ({
+    value: provider,
+    color: rgba(colorMap.get(provider)!, 0.95),
+    type: "line",
+    id: provider,
+    dataKey: provider,
+  }));
 
   // Negligible data threshold (adjust if you like)
   const MIN_RENDER_USD = 0.01;
@@ -134,7 +156,7 @@ export default function ProviderStackArea({
             itemStyle={{ color: chartTheme.tooltip.color }}
             formatter={(val: number) => fmtUsd(val)}
           />
-          <Legend wrapperStyle={{ color: chartTheme.tooltip.color }} />
+          <Legend wrapperStyle={{ color: chartTheme.tooltip.color }} payload={legendPayload} />
           {drawProviders.map((p) => {
             const color = colorMap.get(p)!;
             return (
